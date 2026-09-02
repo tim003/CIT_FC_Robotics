@@ -105,6 +105,31 @@ selects the JTAG signal source only and is gated by the `STRAP_JTAG_SEL` eFuse,
 which ships unburned. Do not burn that eFuse on these boards; debug over the
 USB Serial/JTAG interface instead.
 
+## Why these are generated, not schematic-captured
+
+A browser schematic tool (Cirkit Designer) was evaluated for this and
+**abandoned on 2026-09-02**. Recorded so the option is not reopened without
+new information.
+
+The design was fully placed and auto-wired there, and the result diverged from
+the netlist in ways that were tedious to correct and easy to miss: I2C wired to
+GPIO35/36 rather than GPIO2/3, and the battery left unconnected to the buck
+converter's input entirely. Three structural problems made it a poor fit:
+
+- Its AI placement is restricted to a small simulatable catalog, so the parts
+  this design actually uses — PCA9685, DWM3000, LM2596 — had to be dragged in
+  by hand.
+- Wiring is metered by credits, which makes correcting a diagram cost money
+  and discourages the iteration a spec needs.
+- The export is a 15.8 MB SVG that is 97% base64-encoded photographs of
+  boards, with zero text elements. It does not diff, does not grep, and cannot
+  be reviewed in a pull request.
+
+That last point is the disqualifying one against this repo's convention that
+diagrams diff as text. `generate.py` produces all four variants from one
+parameterised source, so a pin change propagates everywhere at once instead of
+being re-drawn four times by hand.
+
 ## Source
 
 Loftwork scheme transcribed from Notion → `LW Taiwan / Robotics / Design`,
