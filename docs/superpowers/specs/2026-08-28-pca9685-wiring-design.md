@@ -94,9 +94,14 @@ All grounds meet at a single star point.
 
 ### Buses
 
-**I2C** — `SDA GPIO35`, `SCL GPIO36` (Lolin S3 Mini defaults per the Arduino
-variant's `pins_arduino.h`). Shared by OLED `0x3C` and PCA9685 `0x40`; no address
-conflict.
+**I2C** — `SDA GPIO2`, `SCL GPIO3`. Shared by OLED `0x3C` and PCA9685 `0x40`; no
+address conflict.
+
+> **Changed 2026-09-02.** Previously `SDA GPIO35` / `SCL GPIO36` (Lolin S3 Mini
+> defaults per the Arduino variant's `pins_arduino.h`). Moved to `2`/`3` to match
+> the bench-tested wiring on the **ESP32-S3 Super Mini** — the board actually in
+> hand — per Loftwork `Robotics/Design`, test `_003`. This also sidesteps the
+> octal-PSRAM hazard below entirely.
 
 **SPI** — reserved for the UWB header: `SCK 12`, `MOSI 11`, `MISO 13`, `CS 10`.
 These are the board's declared SPI defaults and do not collide with I2C.
@@ -107,8 +112,8 @@ These are the board's declared SPI defaults and do not collide with I2C.
 
 | Function | GPIO | Notes |
 |---|---|---|
-| I2C SDA | 35 | OLED + PCA9685 |
-| I2C SCL | 36 | |
+| I2C SDA | 2 | OLED + PCA9685 |
+| I2C SCL | 3 | Strapping pin — qualified exception, see below |
 | PCA9685 `OE` | 18 | Active-low. HIGH = all servos off; firmware kill switch |
 | UWB SCK | 12 | |
 | UWB MOSI | 11 | |
@@ -118,16 +123,27 @@ These are the board's declared SPI defaults and do not collide with I2C.
 | UWB RSTn | 21 | **Open-drain + pull-up. Never drive high.** |
 | UWB WAKEUP | 16 | Spare; DWM3000 only |
 | UWB EXTON | 17 | Spare; DWM3000 only |
-| Free | 1–9, 33, 34, 37–40 | 9 are ADC-capable |
+| Free | 1, 4–9, 33–40 | 9 are ADC-capable; `35`/`36` freed by the I2C move |
 
-**Reserved — do not use:** GPIO `0` (boot button), `3`/`45`/`46` (strapping),
+**Reserved — do not use:** GPIO `0` (boot button), `45`/`46` (strapping),
 `19`/`20` (native USB), `43`/`44` (UART0), `47`/`48` (RGB LED).
 
-> **PSRAM caveat.** On ESP32-S3 boards with *octal* PSRAM, GPIO35/36/37 are
-> consumed by the PSRAM bus and unusable. The Lolin S3 Mini uses the
-> ESP32-S3FH4R2 (4MB flash, **2MB quad** PSRAM), so 35/36 are genuinely free —
-> which is why the Arduino variant assigns them as SDA/SCL. **If this design is
-> ported to an 8MB-PSRAM S3 board, I2C must move.**
+> **`GPIO3` is a qualified exception.** Espressif does list it as a strapping
+> pin, so the blanket "reserved" entry it previously carried here was
+> over-conservative. `GPIO3` selects the **JTAG signal source only** — boot mode
+> is set by `GPIO0` + `GPIO46`, never `GPIO3`. That role is gated behind the
+> `EFUSE_STRAP_JTAG_SEL` eFuse, whose default is `0` (unburned), and "after
+> reset, the strapping pins work as normal function pins." An I2C pull-up
+> holding it high at boot is therefore harmless on a stock chip.
+> **Do not burn `STRAP_JTAG_SEL` on these boards**; debug via USB Serial/JTAG.
+> Sources: ESP32-S3 *Hardware Design Guidelines — Schematic Checklist*; ESP-IDF
+> *Configure Other JTAG Interfaces*.
+
+> **PSRAM caveat — now moot for I2C.** On ESP32-S3 boards with *octal* PSRAM,
+> GPIO35/36/37 are consumed by the PSRAM bus and unusable. That hazard is
+> precisely why I2C no longer lives there: `GPIO2`/`GPIO3` are free regardless of
+> PSRAM configuration, so the bus is now portable across S3 variants. Keep the
+> hazard in mind before reusing `35`–`37` for anything else.
 
 ---
 
@@ -236,8 +252,8 @@ input a KiCad schematic needs if a custom board follows later.
 | 5 | 5V rail node | S3 Mini `5V` | 22AWG red | Separate branch |
 | 6 | GND star point | All module GNDs | 22AWG black | Single-point |
 | 7 | S3 `3V3` | PCA9685 `VCC` | 30AWG | **Logic only — not V+** |
-| 8 | S3 GPIO35 | PCA9685 + OLED `SDA` | 30AWG | |
-| 9 | S3 GPIO36 | PCA9685 + OLED `SCL` | 30AWG | |
+| 8 | S3 GPIO2 | PCA9685 + OLED `SDA` | 30AWG | |
+| 9 | S3 GPIO3 | PCA9685 + OLED `SCL` | 30AWG | |
 | 10 | S3 GPIO18 | PCA9685 `OE` | 30AWG | |
 | 11–18 | PCA9685 ch0–7 | Servo 1–8 signal | 30AWG | Upstream order preserved |
 
@@ -253,7 +269,7 @@ Branched from `86d2bf8` (`main`). Firmware changes required:
   `ESP32Servo`.
 - The eight `servos[i].attach(servoPins[i], 732, 2929)` calls — removed; replaced
   by a single PCA9685 initialisation.
-- `I2C_SDA`/`I2C_SCL` — repointed to GPIO35/36.
+- `I2C_SDA`/`I2C_SCL` — repointed to GPIO2/3.
 - `ESP32PWM::allocateTimer()` calls — no longer needed; PWM generation moves off
   the MCU entirely.
 

@@ -15,7 +15,7 @@
 Copied verbatim from the spec. Every task's requirements implicitly include these.
 
 - **MCU:** Lolin S3 Mini (ESP32-S3), ESP32-S3FH4R2, 4MB flash + 2MB **quad** PSRAM.
-- **I2C:** `SDA GPIO35`, `SCL GPIO36`. OLED `0x3C`, PCA9685 `0x40`.
+- **I2C:** `SDA GPIO2`, `SCL GPIO3`. OLED `0x3C`, PCA9685 `0x40`.
 - **SPI (UWB header):** `SCK 12`, `MOSI 11`, `MISO 13`, `CSn 10`, `IRQ 14`, `RSTn 21`, `WAKEUP 16`, `EXTON 17`.
 - **PCA9685 `OE`:** `GPIO18`, active-low.
 - **Free GPIOs:** 1–9, 33, 34, 37–40.
@@ -318,8 +318,8 @@ Logic section:
 | 13 | S3 `3V3` | OLED `VCC` | 30AWG | |
 | 14 | S3 `3V3` | UWB header `3V3` | 30AWG | |
 | 15 | S3 `GND` | `GND_STAR` | 22AWG black | |
-| 16 | S3 `GPIO35` | PCA9685 `SDA` + OLED `SDA` | 30AWG | Shared bus |
-| 17 | S3 `GPIO36` | PCA9685 `SCL` + OLED `SCL` | 30AWG | Shared bus |
+| 16 | S3 `GPIO2` | PCA9685 `SDA` + OLED `SDA` | 30AWG | Shared bus |
+| 17 | S3 `GPIO3` | PCA9685 `SCL` + OLED `SCL` | 30AWG | Shared bus |
 | 18 | S3 `GPIO18` | PCA9685 `OE` | 30AWG | Active-low |
 
 Servo section — one row per channel, ch0 through ch7, each `PCA9685 chN signal → Servo N+1 signal`, 30AWG, with a note that servo V+/GND come from the PCA9685's own 3-pin headers, **not** from separate runs.
@@ -497,7 +497,7 @@ Record: branch point `86d2bf8` on `main`; that we do not merge from upstream and
 Firmware changes required, each naming the upstream symbol:
 - `setServoAngle()` — rewritten to drive PCA9685 channels over I2C instead of `ESP32Servo`
 - the eight `servos[i].attach(servoPins[i], 732, 2929)` calls — removed, replaced by one PCA9685 init
-- `I2C_SDA`/`I2C_SCL` — repointed to GPIO35/36
+- `I2C_SDA`/`I2C_SCL` — repointed to GPIO2/3
 - `ESP32PWM::allocateTimer()` × 4 — removed; PWM generation leaves the MCU
 
 Explicitly portable and unchanged: `face-bitmaps.h`, `movement-sequences.h`, the face/animation engine, the JSON API, Sesame Studio compatibility — **because channel ordering is preserved**.

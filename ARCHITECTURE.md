@@ -56,7 +56,7 @@ Violating any of these is a bug, not a style choice.
 
 ## Interfaces between subsystems
 
-- **MCU ↔ actuation/display:** a single I2C bus, `SDA GPIO35` / `SCL GPIO36`.
+- **MCU ↔ actuation/display:** a single I2C bus, `SDA GPIO2` / `SCL GPIO3`.
   Two devices, distinct addresses. Adding an I2C sensor later needs no new pins.
 - **MCU ↔ sensing:** SPI on GPIO 10–13 plus three control lines, exposed as an
   8-pin header. Unpopulated today.

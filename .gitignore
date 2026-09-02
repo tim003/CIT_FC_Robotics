@@ -8,6 +8,10 @@ credentials*
 *.pem
 id_ed25519*
 
+# Agent transients (screenshots, observational memory)
+.pi/
+.memory/
+
 # OS / editor noise
 .DS_Store
 .vscode/
