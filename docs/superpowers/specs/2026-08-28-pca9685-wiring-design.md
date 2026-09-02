@@ -292,6 +292,20 @@ Nothing is UWB-related — the header is unpopulated at this stage by design.
 
 ## Open questions
 
-None blocking. Two deferred by choice: the specific UWB part (DWM1000 vs
-DWM3000) and the battery chemistry/capacity, both resolvable without redesign
-because the header and power input are part-agnostic.
+None blocking. One remains deferred by choice: the specific UWB part (DWM1000
+vs DWM3000), resolvable without redesign because the header is part-agnostic.
+
+**Battery — resolved 2026-09-02.** A **2S 18650 pack, 7.4V nominal**, with an
+integrated **protection circuit** and **XH2.54-2P** output plug, charged over
+USB. Feeds `LM2596S IN+` / `IN-` directly.
+
+- 7.4V nominal (8.4V fully charged, ~6.0V cutoff) sits comfortably above the
+  LM2596S dropout for a 5.2V output across the whole discharge curve.
+- The protection circuit is the pack's, not ours — this design adds no
+  undervoltage cutoff of its own, so **do not substitute an unprotected pack.**
+- Mate the XH2.54-2P to a matching header; do not solder cell leads directly.
+
+> The Loftwork `Robotics/Design` bench notes specify **14500** cells at the same
+> 2S / 7.4V. Electrically interchangeable here — same voltage, same connector
+> convention — differing only in capacity and physical size. 18650 is the
+> chosen part for the build; 14500 is fine for bench testing.
