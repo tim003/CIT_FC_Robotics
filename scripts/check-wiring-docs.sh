@@ -17,7 +17,8 @@ ok()  { echo "  ok: $*"; }
 mark() { before=$fail; }
 done_ok() { [ "$fail" -eq "$before" ] && ok "$*"; }
 
-DOCS=$(find docs/wiring docs/upstream hardware -name '*.md' 2>/dev/null)
+DOCS=$(find docs/wiring docs/upstream hardware -name '*.md' 2>/dev/null
+       ls ARCHITECTURE.md AGENTS.md 2>/dev/null)
 [ -n "$DOCS" ] || { echo "no deliverable docs found yet"; exit 0; }
 
 # 1. No placeholders anywhere.
@@ -68,11 +69,15 @@ done
 done_ok "RSTn warning present wherever RSTn appears"
 
 # 6. Internal links must resolve.
+# Skip external schemes explicitly rather than by first letter: excluding
+# anything starting with 'h' to dodge http also silently skipped every
+# relative link under hardware/.
 mark
 for f in $DOCS; do
   d=$(dirname "$f")
-  for l in $(grep -oE '\]\(([^)#h][^)#]*)' "$f" 2>/dev/null | sed -E 's/^\]\(//'); do
+  for l in $(grep -oE '\]\([^)#]+' "$f" 2>/dev/null | sed -E 's/^\]\(//'); do
     [ -z "$l" ] && continue
+    case "$l" in http:*|https:*|mailto:*) continue;; esac
     [ -e "$d/$l" ] || [ -e "$l" ] || err "$f: dead link -> $l"
   done
 done

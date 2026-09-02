@@ -22,7 +22,13 @@ A swarm-capable adaptation of the open-source Sesame quadruped robot, rewired
 around a **PCA9685** PWM driver instead of upstream's Distro Board or hand
 wiring, with pins reserved for UWB positioning and extra actuators.
 
-Current phase: **wiring specification**. No firmware work yet.
+Current phase: the **wiring specification is written** (`docs/wiring/`) but the
+harness has not been built or bench-verified as a whole. Firmware adaptation is
+next. Run `scripts/check-wiring-docs.sh` after touching any wiring doc.
+
+The board is the **ESP32-S3 Super Mini**, and I2C is on **GPIO2/GPIO3**. Both
+were retargeted from the original spec after bench verification; treat older
+references to a Lolin S3 Mini or GPIO35/36 as stale.
 
 ## Hard rules
 

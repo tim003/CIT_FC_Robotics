@@ -30,8 +30,8 @@ Two things distinguish this project from upstream:
 
 | Subsystem | Component | Interface | Notes |
 |---|---|---|---|
-| Compute | Lolin S3 Mini (ESP32-S3) | — | Dual-core, BLE, Wi-Fi FTM capable |
-| Actuation | PCA9685 → 8× MG90 servos | I2C `0x40` | ch0–7 legs; ch8–15 spare |
+| Compute | ESP32-S3 Super Mini | — | Dual-core, BLE, Wi-Fi FTM capable |
+| Actuation | PCA9685 → 8× MG90S servos | I2C `0x40` | ch0–7 legs; ch8 reserved; ch9–15 spare |
 | Display | SSD1306 128×64 OLED | I2C `0x3C` | Shares the bus with PCA9685 |
 | Power | LM2596S buck + USB-C, SPDT-selected | 5V rail | Star topology |
 | Sensing *(reserved)* | UWB module, unpopulated | SPI, 8-pin header | DWM1000/DWM3000 agnostic |
@@ -65,12 +65,17 @@ Violating any of these is a bug, not a style choice.
 
 ## Roadmap
 
-**Now — wiring.** Produce a complete, buildable wiring specification. No
-firmware, no PCB.
+**Done — wiring specification.** Complete and buildable. The netlist, pin map,
+power design, expansion notes and assembly guide are under
+[`docs/wiring/`](docs/wiring/README.md), with the BOM delta in
+[`hardware/bom.md`](hardware/bom.md). Consistency is enforced mechanically by
+`scripts/check-wiring-docs.sh`. Not yet built or bench-verified as a whole
+harness.
 
-**Next — firmware adaptation.** Replace direct GPIO servo control with PCA9685
+**Now — firmware adaptation.** Replace direct GPIO servo control with PCA9685
 driving. Isolated to `setServoAngle()` and initialisation; animation data is
-untouched.
+untouched. Blast radius recorded in
+[`docs/upstream/divergence.md`](docs/upstream/divergence.md).
 
 **Then — positioning.** Wi-Fi FTM first (no BOM cost, ~1–2m). UWB second
 (~10cm) when the header is populated. Complementary layers, not alternatives.
@@ -82,14 +87,25 @@ open.
 ## Deliberately out of scope
 
 Recorded so they are not mistaken for oversights: IMU, audio, camera, battery
-fuel gauge, mesh protocol design, custom PCB. The pin budget leaves 14 free
-GPIOs (9 ADC-capable) and I2C headroom, so none of these forces a redesign.
+fuel gauge, mesh protocol design, custom PCB. Eleven GPIOs are assigned and the
+I2C bus has address headroom, so none of these forces a redesign.
+
+No exact free-GPIO count is published. The Super Mini is a generic module with
+no official schematic, and the widely circulated third-party pinouts for it are
+wrong in ways that would cost hardware — see
+[`docs/wiring/pin-map.md`](docs/wiring/pin-map.md). Confirm any new pin against
+the board in hand.
 
 ## Constraints that are settled
 
 These were decided deliberately; reopening them means revisiting the spec.
 
-- **Lolin S3 Mini**, not S2 — BLE and Wi-Fi FTM are needed for the swarm goal.
+- **ESP32-S3 Super Mini**, not S2 — BLE and Wi-Fi FTM are needed for the swarm
+  goal. Retargeted from the Lolin S3 Mini: the Super Mini is the board the
+  GPIO2/3 I2C bus was actually bench-proven on.
+- **I2C on GPIO2/GPIO3**, not GPIO35/36. GPIO3 is a strapping pin, but it
+  straps JTAG source selection only, gated by the `STRAP_JTAG_SEL` eFuse, which
+  ships unburned. Do not burn that eFuse on these boards.
 - **Dual-source power** with physical source selection, not diode-OR.
 - **Part-agnostic UWB header**, not a committed part.
 - **Markdown + netlist** as schematic format, KiCad-ready but not KiCad-first.

@@ -43,11 +43,19 @@ all of them; none is designed here.
 
 | # | Decision | Choice | Rationale |
 |---|---|---|---|
-| 1 | Microcontroller | **Lolin S3 Mini (ESP32-S3)** | Dual-core, BLE, more GPIO than S2; supports Wi-Fi FTM, which the swarm goal depends on |
+| 1 | Microcontroller | **ESP32-S3 Super Mini** | Dual-core, BLE, more GPIO than S2; supports Wi-Fi FTM, which the swarm goal depends on |
 | 2 | Power | **Dual-source 5V rail** (battery→LM2596S *or* USB-C), SPDT-selected | Bench-safe during bring-up, untethered for swarm work, no backfeed |
 | 3 | UWB | **Part-agnostic 8-pin header** | DWM1000 and DWM3000 both drop in; avoids committing to an unpurchased part |
 | 4 | Schematic format | **Markdown + Mermaid + netlist table**, KiCad-ready | Renders in Obsidian and GitHub, diffs cleanly, reviewable before soldering |
 | 5 | Upstream relationship | **Fresh repo + documented divergence** | Servo control diverges structurally; upstream merges would conflict permanently |
+
+> **Changed 2026-09-02.** Decision 1 previously read *Lolin S3 Mini*. The board
+> was retargeted to the **ESP32-S3 Super Mini** because that is the board the
+> GPIO2/GPIO3 I2C bus was bench-proven on. The rationale is unchanged — both are
+> ESP32-S3 parts — but the two boards break out different subsets of the same
+> silicon, so the free-pin reasoning below does not transfer. See
+> [`docs/wiring/pin-map.md`](../../wiring/pin-map.md), which supersedes this
+> section and explains why no free-pin list is published for the Super Mini.
 
 ---
 

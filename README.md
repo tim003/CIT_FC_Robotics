@@ -4,7 +4,10 @@ A swarm-capable, AI-driven adaptation of the open-source
 [Sesame robot](https://github.com/dorianborian/sesame-robot) — an ESP32
 quadruped with eight servos and an expressive OLED face.
 
-**Status:** design approved, wiring documents in progress. No hardware built yet.
+**Status:** wiring specification complete. No hardware built yet.
+
+The [netlist](docs/wiring/netlist.md) is the source of truth; start from the
+[wiring guide](docs/wiring/README.md) to build the harness.
 
 ## What's different from upstream
 
@@ -12,7 +15,7 @@ quadruped with eight servos and an expressive OLED face.
 |---|---|---|
 | Servo control | 8 GPIOs driven directly | **PCA9685** over I2C |
 | Wiring options | Distro Board V1/V3, or hand wiring | PCA9685-based (we have no Distro Board) |
-| Microcontroller | Lolin S2 Mini / ESP32-DevKitC | **Lolin S3 Mini (ESP32-S3)** |
+| Microcontroller | Lolin S2 Mini / ESP32-DevKitC | **ESP32-S3 Super Mini** |
 | Power | USB-C *or* battery+buck | Dual-source 5V rail, switch-selected |
 | Expansion | — | 8 spare PWM channels + reserved UWB header |
 | Goal | Expressive desktop robot | **Multi-robot swarm behaviour** |
@@ -41,16 +44,20 @@ Plus at least one reserved output (PCA9685 ch8) for a future actuator.
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **Start here.** Subsystems, invariants, roadmap |
 | [`AGENTS.md`](AGENTS.md) | Instructions for AI agents working in this repo |
 | [`docs/superpowers/specs/`](docs/superpowers/specs/) | Design specs and reasoning |
-| `docs/wiring/` | The wiring guide, netlist, pin map, power design *(in progress)* |
-| `docs/upstream/` | What we changed vs upstream, and why *(in progress)* |
+| [`docs/wiring/`](docs/wiring/README.md) | The wiring guide, netlist, pin map, power design |
+| [`docs/upstream/`](docs/upstream/divergence.md) | What we changed vs upstream, and why |
+| [`hardware/bom.md`](hardware/bom.md) | BOM delta vs upstream |
+
+Run `scripts/check-wiring-docs.sh` after editing any wiring document — it
+enforces cross-document consistency mechanically.
 
 ## Hardware
 
 | Part | Role |
 |---|---|
-| Lolin S3 Mini (ESP32-S3) | Controller |
+| ESP32-S3 Super Mini | Controller. I2C on GPIO2 / GPIO3 |
 | PCA9685 | 16-channel 12-bit PWM/servo driver, I2C `0x40` |
-| 8× MG90 servo | Legs (2 per leg) |
+| 8× MG90S servo | Legs (2 per leg) |
 | SSD1306 128×64 OLED | Face, I2C `0x3C` |
 | LM2596S | Buck converter for battery operation |
 
