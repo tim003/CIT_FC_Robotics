@@ -35,7 +35,10 @@ everything that matters most:
 
 - I2C on **GPIO2 (SDA) / GPIO3 (SCL)** — PCA9685 and SSD1306 in parallel
 - PCA9685 at `0x40`, SSD1306 at `0x3C`
-- Logic 3V3 for both peripherals taken from the S3's `3V3` pin
+- Logic 3V3 for both peripherals taken from the S3's `3V3` pin. On the
+  PCA9685 this is the `VCC` pin, which supplies the chip's logic only and is
+  **not** the same net as `V+` — `V+` is the 5 V servo supply. Bridging the two
+  destroys the board.
 - LM2596S steps the 2S pack down to the 5 V rail
 - The rail feeds the S3 `5V` pin **and** the PCA9685 `V+` terminal as two
   branches — servo current never returns through the ESP32
