@@ -13,11 +13,20 @@ generation has left the MCU entirely and moved to a PCA9685 on I2C. Upstream
 firmware is a reference to read, not a branch to merge. Cherry-pick specific
 fixes by hand if they are worth having.
 
-## Firmware changes required
+## Firmware changes made
 
-Not yet implemented — the project is still in its wiring phase. This is the
-blast radius a future firmware task inherits, recorded now so it does not have
-to be rediscovered.
+Implemented in
+[`firmware/sesame-s3-pca9685/`](../../firmware/sesame-s3-pca9685/README.md),
+built as a byte-identical copy of upstream's sketch with six surgical edits —
+166 changed lines total. Everything below was the predicted blast radius, and
+nothing outside it moved.
+
+**Status: runs on hardware, robot behaviour untested.** It builds clean for
+`esp32:esp32:esp32s3` (core 3.3.11, Adafruit PWM Servo Driver 3.0.3) at 84 % of
+program storage, the pulse geometry below is verified arithmetically, and the
+sketch has been flashed to an ESP32-S3 Super Mini where it boots and drives the
+display. It has not run the assembled eight-servo robot — only three servos
+have ever moved, so no animation has been observed end to end.
 
 | Upstream symbol | Change |
 |---|---|
@@ -25,13 +34,58 @@ to be rediscovered.
 | `servos[i].attach(servoPins[i], 732, 2929)` × 8 | Removed. Replaced by a single PCA9685 initialisation |
 | `I2C_SDA` / `I2C_SCL` defines | Repointed to GPIO2 / GPIO3 |
 | `ESP32PWM::allocateTimer()` × 4 | Removed. PWM generation no longer happens on the MCU, so the timers are not needed |
+| `#include <ESP32Servo.h>` | Replaced by `Adafruit_PWMServoDriver.h`. `ESP32Servo` is no longer a dependency |
+| — *(new)* | PCA9685 `OE` on GPIO18, held HIGH through boot and released only after the PWM frequency is programmed |
+| — *(new)* | UWB pin reservations, netlist rows 27–34. `#define`s only — `pinMode()` is deliberately never called, so an unpopulated header is never driven |
 
-The `attach()` calls carried upstream's pulse-width bounds as raw timer counts
-(`732`, `2929`). Those numbers do not transfer — the PCA9685 expresses pulse
-width as a 12-bit count against its own PWM frequency. They must be
-recalculated for the new part, not copied.
+### The pulse-width bounds
 
-Also note there is no official `pins_arduino.h` variant for the ESP32-S3 Super
+This is the one part of the port that is easy to get wrong, so the arithmetic
+is recorded rather than left to be rediscovered.
+
+`attach(pin, min, max)` takes **microseconds** — not timer counts — and
+ESP32Servo silently clamps the top end:
+
+```c
+// ESP32Servo.h
+#define MIN_PULSE_WIDTH   500
+#define MAX_PULSE_WIDTH  2500
+// ESP32Servo.cpp — attach()
+if (max > MAX_PULSE_WIDTH) max = MAX_PULSE_WIDTH;
+```
+
+**Upstream's effective sweep is therefore 732 – 2500 µs. The `2929` never
+reached a servo.** `Servo::write(angle)` then applies
+`map(angle, 0, 180, min, max)` internally.
+
+The numbers still do not transfer directly, because the PCA9685 expresses
+pulse width as a 12-bit count (4096 steps per period) against its own PWM
+frequency — but the conversion is exact. `setPWMFreq(50)` programs prescale
+121 → 50.03 Hz → 19988 µs period → **4.88 µs per count**:
+
+| | µs | PCA9685 count |
+|---|---|---|
+| 0° | 732 | **150** |
+| 180° | 2500 | **512** |
+| *what upstream asked for and never got* | 2929 | 600 |
+
+Worst deviation from upstream across all 181 integer angles is **6.1 µs
+(0.62° of travel)** — under a third of one step of upstream's own 10-bit LEDC
+timer, which quantises to ~19.5 µs. The port is finer than the original.
+
+**`SERVOMAX 600` is the trap.** It is the unclamped value, and it is the
+obvious thing to copy from both upstream's source and the Adafruit example.
+It sweeps **17.1 % further** at the top end than any existing animation was
+authored for, which risks linkage bind or servo stall once legs are attached.
+
+Sources: [`madhephaestus/ESP32Servo`](https://github.com/madhephaestus/ESP32Servo)
+(`ESP32Servo.h`, `ESP32Servo.cpp`) for the clamp; NXP PCA9685 datasheet for the
+12-bit resolution; Adafruit PWM Servo Driver Library 3.0.3 for the prescale
+calculation.
+
+### I2C initialisation
+
+There is no official `pins_arduino.h` variant for the ESP32-S3 Super
 Mini, so `Wire.begin(2, 3)` must be called explicitly rather than relying on
 framework defaults. See [../wiring/pin-map.md](../wiring/pin-map.md).
 

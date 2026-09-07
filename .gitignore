@@ -13,6 +13,13 @@ id_ed25519*
 .memory/
 .parked/
 
+# Unmodified upstream headers, fetched next to the sketch so Arduino can find
+# them. Deliberately not vendored -- see firmware/sesame-s3-pca9685/README.md.
+# Re-fetch with the curl commands in that README.
+firmware/sesame-s3-pca9685/face-bitmaps.h
+firmware/sesame-s3-pca9685/movement-sequences.h
+firmware/sesame-s3-pca9685/captive-portal.h
+
 # Isolated agent worktrees
 .worktrees/
 
@@ -40,3 +47,7 @@ fp-info-cache
 *.f3z
 *.step
 *.stl
+# Unmodified upstream sketch, kept locally as the diff baseline. Not vendored,
+# for the same reason as the headers above; re-fetch with the curl command in
+# firmware/sesame-s3-pca9685/README.md.
+firmware/original sesame-firmware-main.ino
