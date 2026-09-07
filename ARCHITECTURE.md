@@ -72,10 +72,26 @@ power design, expansion notes and assembly guide are under
 `scripts/check-wiring-docs.sh`. Not yet built or bench-verified as a whole
 harness.
 
-**Now — firmware adaptation.** Replace direct GPIO servo control with PCA9685
-driving. Isolated to `setServoAngle()` and initialisation; animation data is
-untouched. Blast radius recorded in
+**Now — firmware adaptation: running on hardware, robot behaviour untested.**
+Direct GPIO servo control has been replaced by PCA9685 driving in
+[`firmware/sesame-s3-pca9685/`](firmware/sesame-s3-pca9685/README.md). The
+change is isolated to `setServoAngle()` and initialisation; animation data is
+untouched. It compiles for `esp32:esp32:esp32s3`, the pulse geometry is
+verified arithmetically against upstream, and the sketch has been flashed to a
+real board and boots with a working display and a working radio. It has not
+run the assembled eight-servo robot — only three servos have ever moved, so no
+animation has been observed end to end. Blast radius and the pulse-width
+arithmetic are recorded in
 [`docs/upstream/divergence.md`](docs/upstream/divergence.md).
+
+Bring-up sketches and the board acceptance test live in
+[`firmware/test/`](firmware/test/README.md). Run the acceptance test on any new
+board before wiring it: a 2026-09-07 bench session lost most of a day to a
+radio that appeared dead but was merely seated over the metal strips of a
+breadboard, documented in [`docs/wiring/antenna.md`](docs/wiring/antenna.md).
+
+Outstanding before this counts as done: build the harness, flash the sketch,
+and verify all eight channels under load.
 
 **Then — positioning.** Wi-Fi FTM first (no BOM cost, ~1–2m). UWB second
 (~10cm) when the header is populated. Complementary layers, not alternatives.

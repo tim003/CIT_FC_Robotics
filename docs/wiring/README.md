@@ -56,12 +56,18 @@ flowchart TB
 | [pin-map.md](pin-map.md) | You need to know what a GPIO does, or want to assign a new one |
 | [power.md](power.md) | Before first power-on, and before adding any load |
 | [expansion.md](expansion.md) | Adding a UWB module or using the spare PWM channels |
+| [antenna.md](antenna.md) | Seating the board, laying out a PCB, or closing a chassis |
 | [diagrams/](diagrams/README.md) | You want a pictorial view, or to compare against the Loftwork bench scheme |
 
 ## Assembly order
 
 Each step names the netlist rows it satisfies, so progress is checkable
 against the source of truth rather than by eye.
+
+Before any of it: **seat the ESP32 so its antenna end overhangs the end of
+the breadboard.** Seated over the metal contact strips, the radio still
+receives but cannot be reached, which presents as a dead board rather than a
+placement mistake. See [antenna.md](antenna.md).
 
 1. **Set the LM2596S to 5.2 V with no load.** Nothing connected downstream.
    Rows 3–4. Full procedure in [power.md](power.md).
@@ -87,6 +93,8 @@ is otherwise discovered by smoke.
       wire, not by looking at the colour
 - [ ] ESP32 `5V` comes from the rail node, **not** from the PCA9685 `V+`
       terminal
+- [ ] ESP32 antenna end clear of metal and overhanging the breadboard —
+      see [antenna.md](antenna.md)
 - [ ] No servos connected yet
 - [ ] Battery disconnected while any soldering is done
 

@@ -22,9 +22,14 @@ A swarm-capable adaptation of the open-source Sesame quadruped robot, rewired
 around a **PCA9685** PWM driver instead of upstream's Distro Board or hand
 wiring, with pins reserved for UWB positioning and extra actuators.
 
-Current phase: the **wiring specification is written** (`docs/wiring/`) but the
-harness has not been built or bench-verified as a whole. Firmware adaptation is
-next. Run `scripts/check-wiring-docs.sh` after touching any wiring doc.
+Current phase: the **wiring specification is written** (`docs/wiring/`) and the
+**firmware port runs on hardware** (`firmware/sesame-s3-pca9685/`). The sketch
+has been flashed to an ESP32-S3 Super Mini and boots: the display renders, and
+the Wi-Fi radio is proven by the acceptance test in `firmware/test/`. What
+remains unproven is the robot itself — the eight-servo harness has not been
+built, and only three servos have ever moved. Treat the wiring as
+specified-but-unbuilt and the animation behaviour as untested. Run
+`scripts/check-wiring-docs.sh` after touching any wiring doc.
 
 The board is the **ESP32-S3 Super Mini**, and I2C is on **GPIO2/GPIO3**. Both
 were retargeted from the original spec after bench verification; treat older
@@ -63,7 +68,7 @@ AGENTS.md            this file
 docs/wiring/         the main deliverable
 docs/upstream/       divergence record vs sesame-robot
 docs/superpowers/    specs and implementation plans
-firmware/            our modified files only (later phase)
+firmware/            our modified sketch; upstream headers are not vendored
 hardware/            BOM delta vs upstream
 ```
 
