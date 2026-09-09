@@ -24,37 +24,6 @@ and extra actuators.
 | Stage 1 [as-built perfboard](../../hardware/circuit%20layout/README.md) | Power, GPIO2/GPIO3 I2C, and three servos verified; Wi-Fi placement and eight-servo load not verified |
 | [Production target](netlist.md) | Netlist complete; full harness and eight-servo acceptance still pending |
 
-## Block diagram
-
-```mermaid
-flowchart TB
-    subgraph power["Power"]
-        BATT["2S 18650<br/>7.4 V"] --> BUCK["LM2596S<br/>5.2 V"]
-        USBC["USB-C 5 V"] --> SPDT
-        BUCK --> SPDT["SPDT select"]
-        SPDT --> RAIL["5V_RAIL"]
-    end
-
-    RAIL --> PCA["PCA9685<br/>V+ 5 V servo supply"]
-    RAIL --> MCU["ESP32-S3 Super Mini"]
-    MCU -->|3V3| PCAVCC["PCA9685 VCC<br/>logic only"]
-
-    subgraph i2c["I2C bus - GPIO2 SDA / GPIO3 SCL"]
-        OLED["SSD1306<br/>0x3C"]
-        PCACTL["PCA9685<br/>0x40"]
-    end
-
-    MCU --- i2c
-    MCU -->|GPIO18| OE["PCA9685 OE"]
-
-    PCA --> S0["ch0"] & S1["ch1"] & S2["ch2"] & S3["ch3"]
-    PCA --> S4["ch4"] & S5["ch5"] & S6["ch6"] & S7["ch7"]
-
-    MCU -.->|SPI + 4 control| UWB["UWB header<br/>unpopulated"]
-
-    style UWB stroke-dasharray: 5 5
-```
-
 ## Documents
 
 | Document | Read it when |
@@ -64,7 +33,7 @@ flowchart TB
 | [power.md](power.md) | Before first power-on, and before adding any load |
 | [expansion.md](expansion.md) | Adding a UWB module or using the spare PWM channels |
 | [antenna.md](antenna.md) | Seating the board, laying out a PCB, or closing a chassis |
-| [diagrams/](diagrams/README.md) | You want a pictorial view, or to compare against the Loftwork bench scheme |
+| [Stage 1 evidence record](../../hardware/circuit%20layout/README.md) | You need the colleague-tested wiring table, perfboard layout, or bench photographs |
 
 ## Assembly order
 
