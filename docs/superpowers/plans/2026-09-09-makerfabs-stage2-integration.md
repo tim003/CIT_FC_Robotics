@@ -330,8 +330,8 @@ git commit -m "Add versioned UWB UART protocol"
 
 ```cpp
 enum class DsTwrTransactionState {
-  Idle, InitiatorWaitResponse, InitiatorWaitResult,
-  ResponderWaitFinal, Complete, TimedOut
+  Idle, PollTx, WaitResponse, WaitResult,
+  WaitFinal, Complete, TimedOut
 };
 
 struct DsTwrFrameIdentity {
@@ -358,17 +358,20 @@ struct DsTwrTransaction {
 };
 
 void initDsTwrTransaction(
-    DsTwrTransaction* transaction, uint8_t initiatorAddress,
-    uint8_t responderAddress, uint32_t firstSequence);
-void resetDsTwrTransaction(DsTwrTransaction* transaction);
+    DsTwrTransaction* context, uint8_t configuredInitiatorAddress,
+    uint8_t configuredResponderAddress, uint32_t firstSequence,
+    uint32_t timeoutMs);
+void resetDsTwrTransaction(DsTwrTransaction* context);
 bool beginDsTwrInitiator(
-    DsTwrTransaction* transaction, uint64_t t1PollTx,
-    uint32_t nowMs, uint32_t timeoutMs);
-bool acceptDsTwrPoll(
-    DsTwrTransaction* transaction, const DsTwrFrameIdentity& identity,
-    uint64_t t2PollRx, uint32_t nowMs, uint32_t timeoutMs);
+    DsTwrTransaction* context, uint8_t initiatorAddress,
+    uint8_t responderAddress, uint32_t nowMs);
 DsTwrFrameIdentity currentDsTwrIdentity(
-    const DsTwrTransaction& transaction);
+    const DsTwrTransaction& context);
+bool recordDsTwrPollTx(
+    DsTwrTransaction* context, uint64_t t1PollTx, uint32_t nowMs);
+bool acceptDsTwrPoll(
+    DsTwrTransaction* context, const DsTwrFrameIdentity& identity,
+    uint64_t t2PollRx, uint32_t nowMs);
 bool recordDsTwrResponseTx(
     DsTwrTransaction* transaction, uint64_t t3ResponseTx, uint32_t nowMs);
 bool acceptDsTwrResponse(
@@ -387,7 +390,9 @@ bool acceptDsTwrResult(
 bool tickDsTwrTransaction(DsTwrTransaction* transaction, uint32_t nowMs);
 ```
 
-`beginDsTwrInitiator` assigns and advances `nextSequence`; `acceptDsTwrPoll` takes the sequence from a correctly addressed Poll. Either may start from `Idle`, `Complete`, or `TimedOut`, clearing the prior timestamps while retaining configured addresses and the next initiator sequence. `resetDsTwrTransaction` aborts any active transaction to `Idle` without changing configured addresses or `nextSequence`. Every later accept function compares the complete identity before changing state. `completeDsTwrResponder` copies carried `t1/t4/t5` and local `t2/t3/t6` into `DsTwrTimestamps`, invokes the production math API, converts with the supplied board-calibrated `millimetersPerDtu`, and constructs `DsTwrResult`. `acceptDsTwrResult` is the only initiator path to `Complete`. `tickDsTwrTransaction` uses wrap-safe `uint32_t` elapsed-time arithmetic and changes an active wait to `TimedOut` when its bounded timeout expires. Invalid transitions or identities return false without changing the active transaction.
+`initDsTwrTransaction` stores the configured address pair, initial sequence, and fixed timeout. `beginDsTwrInitiator(context, initiatorAddress, responderAddress, nowMs)` validates and adopts that address pair, assigns and advances `nextSequence`, clears prior timestamps, starts the timeout clock, and enters `PollTx` without accepting or fabricating `t1`. `currentDsTwrIdentity()` is valid in `PollTx`, allowing the Poll frame to be constructed with the allocated addresses and sequence. Only after radio transmission succeeds and the hardware TX timestamp is readable may `recordDsTwrPollTx(context, t1PollTx, nowMs)` store the actual 40-bit `t1`, refresh the timeout clock, and advance to `WaitResponse`. A PollTx timeout covers failure to obtain the hardware TX timestamp; the WaitResponse timeout starts from successful `recordDsTwrPollTx`. Out-of-order or duplicate `recordDsTwrPollTx` calls return false without changing state or timestamps.
+
+`acceptDsTwrPoll` takes the sequence and correctly configured address pair from a received Poll. Either initiator begin or responder Poll acceptance may start from `Idle`, `Complete`, or `TimedOut`, clearing prior timestamps while retaining configured addresses and the next initiator sequence. `resetDsTwrTransaction` aborts any active transaction to `Idle` without changing configured addresses or `nextSequence`. Every later accept function compares the complete identity before changing state. `completeDsTwrResponder` copies carried `t1/t4/t5` and local `t2/t3/t6` into `DsTwrTimestamps`, invokes the production math API, converts with the supplied board-calibrated `millimetersPerDtu`, and constructs `DsTwrResult`. `acceptDsTwrResult` is the only initiator path to `Complete`. `tickDsTwrTransaction` uses wrap-safe `uint32_t` elapsed-time arithmetic and changes `PollTx` or any active wait to `TimedOut` when its bounded timeout expires. Invalid transitions or identities return false without changing the active transaction.
 
 - [ ] **Step 1: Write fail-first timestamp/range tests**
 
@@ -425,7 +430,7 @@ ToF = (roundA * roundB - replyA * replyB) /
 
 Reject a zero denominator and any interval set where the numerator is non-positive.
 
-In `tests/ds-twr-transaction-test.cpp`, exercise the production API above, not a transaction model declared in the test. Write fail-first tests for generated/current sequence ownership, the exact `t1` through `t6` mapping, 40-bit wrap, rejection of a Result with the wrong sequence, separate wrong-initiator and wrong-responder address cases, timeout when Result is missing, and equal sequence, peer-relative distance, and quality values in the responder Result and the initiator-accepted Result. These tests cover transaction correlation only; do not invent cryptographic authentication.
+In `tests/ds-twr-transaction-test.cpp`, exercise the production API above, not a transaction model declared in the test. Write fail-first tests proving identity and allocated sequence are available from `currentDsTwrIdentity()` before Poll construction; `t1` remains unset until the actual hardware timestamp is passed to `recordDsTwrPollTx`; successful capture advances `PollTx` to `WaitResponse`; out-of-order and duplicate capture are rejected without mutation; PollTx times out if TX/timestamp acquisition does not complete; and WaitResponse timeout timing begins at successful `t1` capture. Also test the exact `t1` through `t6` mapping, 40-bit wrap, rejection of a Result with the wrong sequence, separate wrong-initiator and wrong-responder address cases, timeout when Result is missing, and equal sequence, peer-relative distance, and quality values in the responder Result and the initiator-accepted Result. These tests cover transaction correlation only; do not invent cryptographic authentication.
 
 Run the transaction test compile and expect failure because `ds-twr-transaction.cpp` is absent.
 
@@ -464,7 +469,8 @@ Rules:
 - require distinct node and peer IDs in range 1–254;
 - on `START`, lower ID initiates and higher ID responds;
 - every radio frame carries frame type, sequence number, initiator ID, and responder ID; the `.ino` obtains outgoing identities from `currentDsTwrIdentity` and delegates every incoming sequence/address check to the production transaction core, so a frame with any mismatched transaction field is ignored;
-- radio-library calls remain in the `.ino`: it reads hardware TX/RX timestamps and passes them to `beginDsTwrInitiator`, `acceptDsTwrPoll`, `recordDsTwrResponseTx`, `acceptDsTwrResponse`, `recordDsTwrFinalTx`, and `completeDsTwrResponder`, and uses `resetDsTwrTransaction` for aborts; Poll establishes `t1`/`t2`, Response establishes `t3`/`t4`, and Final carries the initiator's 40-bit `t1`, `t4`, and `t5` timestamps so the core can combine them with local `t2`, `t3`, and `t6`;
+- initiator order is exact: the `.ino` calls `beginDsTwrInitiator(context, initiator, responder, nowMs)`, obtains the allocated addresses/sequence from `currentDsTwrIdentity()`, constructs and transmits Poll, reads the actual hardware TX timestamp, and only then calls `recordDsTwrPollTx(context, t1PollTx, nowMs)`; it must not require a delayed-TX timestamp before Poll construction or invent a predicted `t1`;
+- all radio-library calls remain in the `.ino`: it passes actual hardware TX/RX timestamps to `recordDsTwrPollTx`, `acceptDsTwrPoll`, `recordDsTwrResponseTx`, `acceptDsTwrResponse`, `recordDsTwrFinalTx`, and `completeDsTwrResponder`, and uses `resetDsTwrTransaction` for aborts; Poll establishes `t1`/`t2`, Response establishes `t3`/`t4`, and Final carries the initiator's 40-bit `t1`, `t4`, and `t5` timestamps so the core can combine them with local `t2`, `t3`, and `t6`;
 - the responder maps the six timestamps to the four intervals exactly as tested, calculates distance and quality, emits its local sequence-bearing `V1 RANGE`, enters `ResultTx`, and transmits a fourth Result frame containing sequence, initiator ID, responder ID, distance, and quality;
 - after Final transmission the initiator enters `WaitResult`; the `.ino` passes the decoded Result to `acceptDsTwrResult`, and only a Result that the shared core accepts for sequence and both addresses can emit the equivalent local `V1 RANGE`;
 - all sequence allocation, address correlation, six-timestamp storage/mapping, timeout transitions, responder Result construction, and initiator Result validation come from `ds-twr-transaction.cpp`; the `.ino` does not duplicate them;
@@ -683,7 +689,25 @@ The analyzer must enforce:
 - all applicable UART reconnect, servo, OLED, and Wi-Fi flags are true; and
 - supply values are within the limits documented in `docs/wiring/power.md`.
 
-In `tests/analyze-stage2-acceptance-test.py`, generate minimal otherwise-passing fixtures and assert the complete fixture passes. Add negative fixtures for an invalid identity, a crossed Makerfabs/robot pair, a duplicated range pair, an omitted range pair, each omitted required event, and mismatched paired `valid` or `reported_mm` values. Also cover removal of one host's target samples and reboot recovery over 5000 ms. Every malformed fixture must fail for its intended reason.
+In `tests/analyze-stage2-acceptance-test.py`, build every fixture from an otherwise-passing complete dataset. Keep the existing positive complete-dataset case and negative fixtures for an invalid identity, crossed range pair, duplicated range pair, omitted range pair, each wholly omitted required event, mismatched paired `valid` and `reported_mm` values, removal of one host's target samples, and reboot recovery over 5000 ms.
+
+Add these explicit event-identity mapping fixtures; each negative mutation must make the analyzer fail for the intended event-specific reason:
+
+- map `reboot-unit-1` incorrectly to (`makerfabs-2`, `robot-2`);
+- map `reboot-unit-2` incorrectly to (`makerfabs-1`, `robot-1`);
+- omit (`makerfabs-1`, `robot-1`) from `uart-tx-disconnect` while retaining its (`makerfabs-2`, `robot-2`) row;
+- omit (`makerfabs-2`, `robot-2`) from `uart-tx-disconnect` while retaining its (`makerfabs-1`, `robot-1`) row;
+- omit (`makerfabs-1`, `robot-1`) from `uart-rx-disconnect` while retaining its (`makerfabs-2`, `robot-2`) row;
+- omit (`makerfabs-2`, `robot-2`) from `uart-rx-disconnect` while retaining its (`makerfabs-1`, `robot-1`) row;
+- substitute (`both`, `both`) on a `range` row;
+- substitute (`both`, `both`) on `reboot-unit-1`;
+- substitute (`both`, `both`) on `reboot-unit-2` in a separate fixture;
+- substitute (`both`, `both`) on `uart-tx-disconnect`;
+- substitute (`both`, `both`) on `uart-rx-disconnect` in a separate fixture;
+- map `uwb-loss` to non-`both` (`makerfabs-1`, `robot-1`); and
+- map `coexistence` to non-`both` (`makerfabs-2`, `robot-2`).
+
+The otherwise-passing positive fixture must contain and preserve both whole-system rows—`uwb-loss` with (`both`, `both`) and `coexistence` with (`both`, `both`)—and prove the analyzer accepts those two mappings. Only this positive case passes; every negative fixture above starts from the same complete dataset and must fail.
 
 Run the analyzer against the absent acceptance CSV and the test suite; expect failure before implementation/data exists.
 
