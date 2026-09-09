@@ -700,6 +700,7 @@ Add these explicit event-identity mapping fixtures; each negative mutation must 
 - omit (`makerfabs-1`, `robot-1`) from `uart-rx-disconnect` while retaining its (`makerfabs-2`, `robot-2`) row;
 - omit (`makerfabs-2`, `robot-2`) from `uart-rx-disconnect` while retaining its (`makerfabs-1`, `robot-1`) row;
 - substitute (`both`, `both`) on a `range` row;
+- change a `stationary` row's (`unit`, `host`) to (`both`, `both`);
 - substitute (`both`, `both`) on `reboot-unit-1`;
 - substitute (`both`, `both`) on `reboot-unit-2` in a separate fixture;
 - substitute (`both`, `both`) on `uart-tx-disconnect`;
