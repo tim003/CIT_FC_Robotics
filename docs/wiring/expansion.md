@@ -23,11 +23,31 @@ a PWM input works: LEDs, an ESC, a small pump. The channel does not care.
 [power.md](power.md) rather than assuming headroom exists. The eight legs
 already peak above the converter's continuous rating.
 
-## UWB header
+## Selected Stage 2 UWB route
 
-An 8-pin, part-agnostic header. It is not wired for a specific module — the
-pin set is chosen so that either supported part drops in without touching the
-harness. Netlist rows 27–34.
+Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
+2026-09-09 but have not arrived or been integrated. After acceptance, the
+intended deployment is one board per robot. The selected architecture uses the
+Makerfabs onboard ESP32 as the UWB coprocessor and exchanges processed range
+and status data with the robot ESP32-S3 over UART; raw DW3000 timing remains on
+the Makerfabs board.
+
+The exact UART GPIOs, connector pins, logic levels, and power feed require
+delivered-board verification and are not yet authoritative. Initial integration
+uses separate USB power for the robot controller and Makerfabs board plus a
+common signal ground before UART TX/RX are connected. Sharing the servo rail is
+allowed only after Makerfabs idle, ranging-average, and peak current are
+measured and regulator headroom is approved against the servo requirement.
+Follow the [Makerfabs Stage 2 implementation
+plan](../superpowers/plans/2026-09-09-makerfabs-stage2-integration.md) for the
+audit and acceptance gates.
+
+## Optional raw-radio UWB header
+
+The existing 8-pin, part-agnostic bare-radio SPI header remains an unpopulated
+alternative; it is not the selected Stage 2 route. It is not wired for a
+specific module — the pin set is chosen so that either supported part drops in
+without touching the harness. Netlist rows 27–34.
 
 `SCK · MOSI · MISO · CSn · IRQ · RSTn · WAKEUP · EXTON`
 

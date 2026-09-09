@@ -13,7 +13,8 @@ duplicated here — see
 | LM2596S buck converter module | 1 | Battery → 5.2 V rail. Adjustable, must be set before use |
 | SPDT switch | 1 | Source selection between battery and USB-C |
 | 1000 µF electrolytic capacitor | 1 | Bulk capacitance at PCA9685 `V+` |
-| 8-pin header | 1 | UWB expansion. Landed but unpopulated |
+| 8-pin header | 1 | Optional bare-radio SPI UWB interface. Landed but unpopulated; not the selected Stage 2 route |
+| Makerfabs ESP32 UWB DW3000 WROOM evaluation board | 2 purchased | Stage 2 UART-connected UWB coprocessor; intended quantity after acceptance is one per robot |
 | ESP32-S3 Super Mini | 1 | MCU. Replaces upstream's S2 Mini / DevKitC |
 | 2S 18650 pack, protected, XH2.54-2P | 1 | 7.4 V nominal supply, USB-charged |
 
@@ -32,17 +33,27 @@ Carried over from upstream without modification:
 - All frame and mechanical hardware — CAD and STL assets stay upstream and are
   referenced by URL, not vendored here
 
-## Deliberately not purchased
+## UWB purchase and integration status
 
-**The UWB module.** The header is landed and the netlist specifies all eight
-connections, but no module is fitted in the base build. Fitting one requires
-re-checking the power budget in
-[`../docs/wiring/power.md`](../docs/wiring/power.md) — the eight servos
-already peak above the converter's continuous rating.
+On 2026-09-09, two evaluation boards of the exact product Makerfabs ESP32 UWB
+DW3000 WROOM were purchased. They have not arrived or been integrated. The
+selected architecture uses each Makerfabs onboard ESP32 as a UWB coprocessor
+over UART, with an intended quantity after acceptance of one per robot.
 
-Either supported part drops into the same header. See
-[`../docs/wiring/expansion.md`](../docs/wiring/expansion.md) for the
-DWM1000 / DWM3000 comparison.
+Exact UART GPIOs, connector pins, logic levels, and the power feed remain
+gated on delivered-board verification. Initial integration uses separate USB
+power for the robot controller and Makerfabs board plus a common signal ground.
+Sharing the servo rail requires measured Makerfabs idle, ranging-average, and
+peak current plus explicit regulator-headroom approval against the servo
+requirement. See the [expansion guide](../docs/wiring/expansion.md) and
+[Makerfabs Stage 2 implementation
+plan](../docs/superpowers/plans/2026-09-09-makerfabs-stage2-integration.md).
+
+The 8-pin bare-radio SPI header remains an optional unpopulated alternative,
+not the selected Stage 2 route. Its `RSTn` signal remains open-drain: drive it
+low or leave it floating, never drive it high. A bare DWM1000 or DWM3000 fitted
+to that header would require the power-budget review in
+[`../docs/wiring/power.md`](../docs/wiring/power.md).
 
 ## Notes on substitutions
 

@@ -21,8 +21,12 @@ and extra actuators.
 
 | Record | Status |
 |---|---|
-| Stage 1 [as-built perfboard](../../hardware/circuit%20layout/README.md) | Power, GPIO2/GPIO3 I2C, and three servos verified; Wi-Fi placement and eight-servo load not verified |
-| [Production target](netlist.md) | Netlist complete; full harness and eight-servo acceptance still pending |
+| Tested Stage 1 — [two-image as-built evidence record](../../hardware/circuit%20layout/README.md) | Power-up, GPIO2/GPIO3 I2C, and movement of three servos verified. This does not verify all eight servos, complete animation, or Wi-Fi in the photographed stacked placement |
+| Production target — [netlist](netlist.md) | Specification complete; the full harness and all-eight-servo acceptance remain pending |
+
+Stage 2 uses the purchased Makerfabs boards as UART-connected UWB
+coprocessors. Its arrival audit, integration, and acceptance gates are in the
+[Makerfabs Stage 2 implementation plan](../superpowers/plans/2026-09-09-makerfabs-stage2-integration.md).
 
 ## Documents
 

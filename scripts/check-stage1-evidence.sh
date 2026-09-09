@@ -40,6 +40,35 @@ for text in \
   fi
 done
 
+ACTIVE_DOCS=(ARCHITECTURE.md AGENTS.md docs/wiring docs/upstream hardware)
+
+if rg -n 'docs/wiring/diagrams|diagrams/README|[12][ab]-(no-uwb|uwb)-' \
+  "${ACTIVE_DOCS[@]}" --glob '*.md'; then
+  echo 'FAIL: active documentation still references retired wiring diagrams'
+  fail=1
+fi
+
+for file in ARCHITECTURE.md AGENTS.md docs/wiring/expansion.md hardware/bom.md; do
+  if ! grep -Fq 'Makerfabs ESP32 UWB DW3000 WROOM' "$file"; then
+    echo "FAIL: $file does not name the selected Makerfabs WROOM board"
+    fail=1
+  fi
+  if ! grep -Fq 'delivered-board verification' "$file"; then
+    echo "FAIL: $file does not preserve the delivered-board verification gate"
+    fail=1
+  fi
+done
+
+if ! grep -Fq 'two evaluation boards' hardware/bom.md; then
+  echo 'FAIL: BOM does not record the two evaluation boards'
+  fail=1
+fi
+
+if ! grep -Fq 'exact UART GPIOs' docs/wiring/expansion.md; then
+  echo 'FAIL: expansion guide does not gate exact UART GPIOs'
+  fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
   exit 1
 fi

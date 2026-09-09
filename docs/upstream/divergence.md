@@ -21,12 +21,26 @@ built as a byte-identical copy of upstream's sketch with six surgical edits —
 166 changed lines total. Everything below was the predicted blast radius, and
 nothing outside it moved.
 
-**Status: runs on hardware, robot behaviour untested.** It builds clean for
+**Status: Stage 1 is partially verified on hardware.** It builds clean for
 `esp32:esp32:esp32s3` (core 3.3.11, Adafruit PWM Servo Driver 3.0.3) at 84 % of
-program storage, the pulse geometry below is verified arithmetically, and the
-sketch has been flashed to an ESP32-S3 Super Mini where it boots and drives the
-display. It has not run the assembled eight-servo robot — only three servos
-have ever moved, so no animation has been observed end to end.
+program storage, and the pulse geometry below is verified arithmetically. The
+[colleague-built perfboard evidence](../../hardware/circuit%20layout/README.md)
+verifies power-up, I2C on GPIO2/GPIO3, and movement of three servos. It does not
+verify all-eight-servo operation, complete animation, or Wi-Fi in the
+photographed stacked assembly. Generated wiring diagrams were retired because
+they were not confirmed build evidence.
+
+Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
+2026-09-09 but have not arrived or been integrated. They define the selected
+Stage 2 route: each Makerfabs onboard ESP32 acts as a UWB coprocessor over UART.
+Exact UART GPIOs, connector pins, and power wiring are not authoritative before
+delivered-board verification. Initial integration uses separate USB power and
+a common signal ground; sharing the servo rail requires measured-current and
+regulator-headroom approval. The [Makerfabs Stage 2 implementation
+plan](../superpowers/plans/2026-09-09-makerfabs-stage2-integration.md) defines
+the audit and acceptance sequence. The raw-radio SPI header remains an optional
+unpopulated interface, not the selected route, and its `RSTn` protection remains
+open-drain: drive low or leave floating, never drive high.
 
 | Upstream symbol | Change |
 |---|---|

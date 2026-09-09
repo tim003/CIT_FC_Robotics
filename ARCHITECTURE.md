@@ -34,7 +34,8 @@ Two things distinguish this project from upstream:
 | Actuation | PCA9685 → 8× MG90S servos | I2C `0x40` | ch0–7 legs; ch8 reserved; ch9–15 spare |
 | Display | SSD1306 128×64 OLED | I2C `0x3C` | Shares the bus with PCA9685 |
 | Power | LM2596S buck + USB-C, SPDT-selected | 5V rail | Star topology |
-| Sensing *(reserved)* | UWB module, unpopulated | SPI, 8-pin header | DWM1000/DWM3000 agnostic |
+| Sensing *(Stage 2 selected)* | Makerfabs ESP32 UWB DW3000 WROOM | UART, pins gated | Onboard ESP32 is the UWB coprocessor; two evaluation boards purchased, not yet delivered or integrated |
+| Sensing *(optional)* | Bare UWB radio, unpopulated | SPI, 8-pin header | DWM1000/DWM3000 agnostic; not the selected Stage 2 route |
 | Comms | ESP32-S3 Wi-Fi radio | — | RSSI baseline, FTM precision |
 
 ## Design invariants
@@ -51,50 +52,56 @@ Violating any of these is a bug, not a style choice.
    modules ship at arbitrary output voltages.
 5. **Servo channel *order* matches upstream's `servoPins[8]` indexing.** This is
    what keeps existing animations and Sesame Studio working.
-6. **The netlist is the source of truth.** Diagrams illustrate; the netlist is
-   what you wire from and what gets reviewed.
+6. **The netlist is the source of truth.** Evidence records describe tested
+   assemblies; the netlist is what you wire from and what gets reviewed.
 
 ## Interfaces between subsystems
 
 - **MCU ↔ actuation/display:** a single I2C bus, `SDA GPIO2` / `SCL GPIO3`.
   Two devices, distinct addresses. Adding an I2C sensor later needs no new pins.
-- **MCU ↔ sensing:** SPI on GPIO 10–13 plus three control lines, exposed as an
-  8-pin header. Unpopulated today.
+- **MCU ↔ sensing (selected Stage 2 route):** UART to the Makerfabs onboard
+  ESP32. The exact UART GPIOs, connector pins, logic levels, and power feed are
+  not authoritative until delivered-board verification.
+- **MCU ↔ bare radio (optional):** SPI on GPIO 10–13 plus control lines,
+  exposed as an unpopulated 8-pin header. `RSTn` remains open-drain: drive it
+  low or leave it floating, never drive it high.
 - **Power ↔ everything:** one 5V rail, branched in a star, with a single ground
   star point.
 
 ## Roadmap
 
-**Done — wiring specification.** Complete and buildable. The netlist, pin map,
-power design, expansion notes and assembly guide are under
+**Stage 1 — evidence recorded, production acceptance incomplete.** The
+[colleague-built perfboard evidence](hardware/circuit%20layout/README.md)
+verifies power-up, I2C on GPIO2/GPIO3, and movement of three servos. It does not
+verify all-eight-servo operation, complete animation, or Wi-Fi in the
+photographed stacked placement. The production netlist, pin map, power design,
+expansion notes, and assembly guide remain under
 [`docs/wiring/`](docs/wiring/README.md), with the BOM delta in
-[`hardware/bom.md`](hardware/bom.md). Consistency is enforced mechanically by
-`scripts/check-wiring-docs.sh`. Not yet built or bench-verified as a whole
-harness.
+[`hardware/bom.md`](hardware/bom.md). The generated wiring diagrams were
+retired because they were not confirmed build evidence; Stage 1 now uses the
+two raster sources and explicit evidence boundaries. Consistency is enforced
+by `scripts/check-wiring-docs.sh`.
 
-**Now — firmware adaptation: running on hardware, robot behaviour untested.**
-Direct GPIO servo control has been replaced by PCA9685 driving in
-[`firmware/sesame-s3-pca9685/`](firmware/sesame-s3-pca9685/README.md). The
-change is isolated to `setServoAngle()` and initialisation; animation data is
-untouched. It compiles for `esp32:esp32:esp32s3`, the pulse geometry is
-verified arithmetically against upstream, and the sketch has been flashed to a
-real board and boots with a working display and a working radio. It has not
-run the assembled eight-servo robot — only three servos have ever moved, so no
-animation has been observed end to end. Blast radius and the pulse-width
-arithmetic are recorded in
-[`docs/upstream/divergence.md`](docs/upstream/divergence.md).
+The PCA9685 firmware port in
+[`firmware/sesame-s3-pca9685/`](firmware/sesame-s3-pca9685/README.md) compiles,
+boots on a real ESP32-S3 Super Mini, renders the display, and has moved those
+three servos. Animation data is untouched, but complete animation remains
+unverified. Blast radius and pulse-width arithmetic are recorded in
+[`docs/upstream/divergence.md`](docs/upstream/divergence.md). Bring-up sketches
+and the board acceptance test live in [`firmware/test/`](firmware/test/README.md).
 
-Bring-up sketches and the board acceptance test live in
-[`firmware/test/`](firmware/test/README.md). Run the acceptance test on any new
-board before wiring it: a 2026-09-07 bench session lost most of a day to a
-radio that appeared dead but was merely seated over the metal strips of a
-breadboard, documented in [`docs/wiring/antenna.md`](docs/wiring/antenna.md).
-
-Outstanding before this counts as done: build the harness, flash the sketch,
-and verify all eight channels under load.
-
-**Then — positioning.** Wi-Fi FTM first (no BOM cost, ~1–2m). UWB second
-(~10cm) when the header is populated. Complementary layers, not alternatives.
+**Stage 2 — Makerfabs UWB integration planned, hardware pending.** Two
+Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
+2026-09-09 but have not arrived or been integrated. The selected boundary uses
+the Makerfabs onboard ESP32 as a UWB coprocessor over UART, with one board per
+robot intended after acceptance. Exact UART GPIOs, connector pins, and power
+wiring remain gated by delivered-board verification. Initial integration uses
+separate USB power plus common signal ground; sharing the servo rail requires
+measured-current and regulator-headroom approval. Follow the [Makerfabs Stage
+2 implementation
+plan](docs/superpowers/plans/2026-09-09-makerfabs-stage2-integration.md).
+The optional raw-radio SPI header remains unpopulated, including its
+open-drain `RSTn` protection; it is not the selected Stage 2 route.
 
 **Later — swarm behaviour.** Inter-robot coordination built on the positioning
 layer. Deliberately undesigned; the point of the reservations is that this stays
@@ -123,7 +130,10 @@ These were decided deliberately; reopening them means revisiting the spec.
   straps JTAG source selection only, gated by the `STRAP_JTAG_SEL` eFuse, which
   ships unburned. Do not burn that eFuse on these boards.
 - **Dual-source power** with physical source selection, not diode-OR.
-- **Part-agnostic UWB header**, not a committed part.
+- **Makerfabs UART coprocessor** as the selected Stage 2 UWB route; exact pins
+  and power await delivered-board verification.
+- **Part-agnostic raw-radio SPI header** retained as an optional unpopulated
+  interface, with open-drain `RSTn`; it is not the selected route.
 - **Markdown + netlist** as schematic format, KiCad-ready but not KiCad-first.
 - **Fresh repo**, upstream referenced rather than forked.
 
