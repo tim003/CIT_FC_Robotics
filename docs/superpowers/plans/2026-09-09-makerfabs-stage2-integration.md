@@ -262,7 +262,7 @@ V1 STATUS state=ranging
 V1 ERROR code=bad-command
 ```
 
-Also assert rejection of:
+For `V1 STATUS state=ranging`, additionally assert that parsing produces `UwbMessageType::Status` and preserves `ranging` in the bounded status text field. Also assert rejection of:
 
 ```text
 V2 HELLO
@@ -316,6 +316,8 @@ git commit -m "Add versioned UWB UART protocol"
 - Create: `firmware/makerfabs-uwb/makerfabs-uwb.ino`
 - Create: `firmware/makerfabs-uwb/ds-twr-math.h`
 - Create: `firmware/makerfabs-uwb/ds-twr-math.cpp`
+- Create: `firmware/makerfabs-uwb/ds-twr-transaction.h`
+- Create: `firmware/makerfabs-uwb/ds-twr-transaction.cpp`
 - Create: `firmware/makerfabs-uwb/README.md`
 - Create: `tests/ds-twr-math-test.cpp`
 - Create: `tests/ds-twr-transaction-test.cpp`
@@ -324,6 +326,68 @@ git commit -m "Add versioned UWB UART protocol"
 **Interfaces:**
 - Consumes: Task 3 protocol and Makerfabs DW3000 API pinned in Task 2.
 - Produces: one runtime-configurable firmware binary for node IDs 1 or 2; lower node ID initiates DS-TWR, higher node ID responds.
+- Production seam: `ds-twr-transaction.h/.cpp` is plain C++ with no Arduino or radio-library dependency. It owns the configured initiator/responder addresses, sequence allocation/correlation, six timestamp slots, transaction state, wrap-safe timeout bookkeeping, responder calculation and Result construction, and initiator Result validation:
+
+```cpp
+enum class DsTwrTransactionState {
+  Idle, InitiatorWaitResponse, InitiatorWaitResult,
+  ResponderWaitFinal, Complete, TimedOut
+};
+
+struct DsTwrFrameIdentity {
+  uint8_t initiatorAddress;
+  uint8_t responderAddress;
+  uint32_t sequence;
+};
+
+struct DsTwrResult {
+  DsTwrFrameIdentity identity;
+  uint32_t distanceMm;
+  int32_t quality;
+};
+
+struct DsTwrTransaction {
+  DsTwrTransactionState state;
+  uint8_t initiatorAddress;
+  uint8_t responderAddress;
+  uint32_t sequence;
+  uint32_t nextSequence;
+  DsTwrTimestamps timestamps;
+  uint32_t timeoutMs;
+  uint32_t lastActivityMs;
+};
+
+void initDsTwrTransaction(
+    DsTwrTransaction* transaction, uint8_t initiatorAddress,
+    uint8_t responderAddress, uint32_t firstSequence);
+void resetDsTwrTransaction(DsTwrTransaction* transaction);
+bool beginDsTwrInitiator(
+    DsTwrTransaction* transaction, uint64_t t1PollTx,
+    uint32_t nowMs, uint32_t timeoutMs);
+bool acceptDsTwrPoll(
+    DsTwrTransaction* transaction, const DsTwrFrameIdentity& identity,
+    uint64_t t2PollRx, uint32_t nowMs, uint32_t timeoutMs);
+DsTwrFrameIdentity currentDsTwrIdentity(
+    const DsTwrTransaction& transaction);
+bool recordDsTwrResponseTx(
+    DsTwrTransaction* transaction, uint64_t t3ResponseTx, uint32_t nowMs);
+bool acceptDsTwrResponse(
+    DsTwrTransaction* transaction, const DsTwrFrameIdentity& identity,
+    uint64_t t4ResponseRx, uint32_t nowMs);
+bool recordDsTwrFinalTx(
+    DsTwrTransaction* transaction, uint64_t t5FinalTx, uint32_t nowMs);
+bool completeDsTwrResponder(
+    DsTwrTransaction* transaction, const DsTwrFrameIdentity& identity,
+    uint64_t carriedT1, uint64_t carriedT4, uint64_t carriedT5,
+    uint64_t localT6, long double millimetersPerDtu, int32_t quality,
+    uint32_t nowMs, DsTwrResult* result);
+bool acceptDsTwrResult(
+    DsTwrTransaction* transaction, const DsTwrResult& received,
+    uint32_t nowMs, DsTwrResult* accepted);
+bool tickDsTwrTransaction(DsTwrTransaction* transaction, uint32_t nowMs);
+```
+
+`beginDsTwrInitiator` assigns and advances `nextSequence`; `acceptDsTwrPoll` takes the sequence from a correctly addressed Poll. Either may start from `Idle`, `Complete`, or `TimedOut`, clearing the prior timestamps while retaining configured addresses and the next initiator sequence. `resetDsTwrTransaction` aborts any active transaction to `Idle` without changing configured addresses or `nextSequence`. Every later accept function compares the complete identity before changing state. `completeDsTwrResponder` copies carried `t1/t4/t5` and local `t2/t3/t6` into `DsTwrTimestamps`, invokes the production math API, converts with the supplied board-calibrated `millimetersPerDtu`, and constructs `DsTwrResult`. `acceptDsTwrResult` is the only initiator path to `Complete`. `tickDsTwrTransaction` uses wrap-safe `uint32_t` elapsed-time arithmetic and changes an active wait to `TimedOut` when its bounded timeout expires. Invalid transitions or identities return false without changing the active transaction.
 
 - [ ] **Step 1: Write fail-first timestamp/range tests**
 
@@ -361,15 +425,26 @@ ToF = (roundA * roundB - replyA * replyB) /
 
 Reject a zero denominator and any interval set where the numerator is non-positive.
 
-In `tests/ds-twr-transaction-test.cpp`, write fail-first transaction tests that reject a Result with the wrong sequence, wrong initiator address, or wrong responder address; time out when Result is missing; and prove the responder's local RANGE and the initiator's Result-derived local RANGE contain equal sequence, peer-relative distance, and quality values. These tests cover transaction correlation only; do not invent cryptographic authentication.
+In `tests/ds-twr-transaction-test.cpp`, exercise the production API above, not a transaction model declared in the test. Write fail-first tests for generated/current sequence ownership, the exact `t1` through `t6` mapping, 40-bit wrap, rejection of a Result with the wrong sequence, separate wrong-initiator and wrong-responder address cases, timeout when Result is missing, and equal sequence, peer-relative distance, and quality values in the responder Result and the initiator-accepted Result. These tests cover transaction correlation only; do not invent cryptographic authentication.
 
-Run the host tests and expect failure because implementation is absent.
+Run the transaction test compile and expect failure because `ds-twr-transaction.cpp` is absent.
 
-- [ ] **Step 2: Implement and test DS-TWR math**
+- [ ] **Step 2: Implement and test DS-TWR math and transaction core**
 
-Use `long double` for intermediate products. Keep conversion from DW3000 device-time units to metres outside this pure function so calibration constants remain board-specific.
+Use `long double` for intermediate products. Keep the DW3000 device-time-unit calibration value outside the pure math function and pass the board-specific millimetres-per-DTU conversion into the transaction core.
 
-Extend `scripts/test-uwb-protocol.sh` to compile/run the protocol, math, and transaction test binaries. Expected: all suites pass without warnings.
+Extend `scripts/test-uwb-protocol.sh` with these exact production-source compile/link and execution commands (in addition to the protocol and standalone math commands):
+
+```bash
+"$CXX" -std=c++17 -Wall -Wextra -Werror \
+  firmware/makerfabs-uwb/ds-twr-math.cpp \
+  firmware/makerfabs-uwb/ds-twr-transaction.cpp \
+  tests/ds-twr-transaction-test.cpp \
+  -o /tmp/ds-twr-transaction-test
+/tmp/ds-twr-transaction-test
+```
+
+The transaction test must compile and link `firmware/makerfabs-uwb/ds-twr-transaction.cpp`; no duplicate test-only state machine or calculation model is permitted. Expected: all suites pass without warnings.
 
 - [ ] **Step 3: Implement the radio state machine**
 
@@ -388,11 +463,12 @@ Rules:
 - accept `CONFIG` only while stopped (`Stopped` or configured/stopped `Ready`); an accepted `CONFIG`, `START`, or `STOP` emits the corresponding `V1 ACK`;
 - require distinct node and peer IDs in range 1–254;
 - on `START`, lower ID initiates and higher ID responds;
-- every radio frame carries frame type, sequence number, initiator ID, and responder ID, and a frame with any mismatched transaction field is ignored;
-- Poll establishes `t1`/`t2`; Response establishes `t3`/`t4`; Final carries the initiator's 40-bit `t1`, `t4`, and `t5` timestamps so the responder can combine them with local `t2`, `t3`, and `t6`;
+- every radio frame carries frame type, sequence number, initiator ID, and responder ID; the `.ino` obtains outgoing identities from `currentDsTwrIdentity` and delegates every incoming sequence/address check to the production transaction core, so a frame with any mismatched transaction field is ignored;
+- radio-library calls remain in the `.ino`: it reads hardware TX/RX timestamps and passes them to `beginDsTwrInitiator`, `acceptDsTwrPoll`, `recordDsTwrResponseTx`, `acceptDsTwrResponse`, `recordDsTwrFinalTx`, and `completeDsTwrResponder`, and uses `resetDsTwrTransaction` for aborts; Poll establishes `t1`/`t2`, Response establishes `t3`/`t4`, and Final carries the initiator's 40-bit `t1`, `t4`, and `t5` timestamps so the core can combine them with local `t2`, `t3`, and `t6`;
 - the responder maps the six timestamps to the four intervals exactly as tested, calculates distance and quality, emits its local sequence-bearing `V1 RANGE`, enters `ResultTx`, and transmits a fourth Result frame containing sequence, initiator ID, responder ID, distance, and quality;
-- after Final transmission the initiator enters `WaitResult`; only a Result matching sequence and both addresses can emit the equivalent local `V1 RANGE`;
-- a missing Result times out without publishing an initiator range, returns to the appropriate idle role, and increments a diagnostic counter;
+- after Final transmission the initiator enters `WaitResult`; the `.ino` passes the decoded Result to `acceptDsTwrResult`, and only a Result that the shared core accepts for sequence and both addresses can emit the equivalent local `V1 RANGE`;
+- all sequence allocation, address correlation, six-timestamp storage/mapping, timeout transitions, responder Result construction, and initiator Result validation come from `ds-twr-transaction.cpp`; the `.ino` does not duplicate them;
+- a missing Result times out through `tickDsTwrTransaction` without publishing an initiator range, returns to the appropriate idle role, and increments a diagnostic counter;
 - timeouts in all other transaction states likewise return to the appropriate idle role and increment a diagnostic counter;
 - `STOP` aborts the transaction, preserves configuration in `Ready`, and emits its ACK; and
 - radio failure enters `Fault` while UART `HELLO`, `STATUS`, and `STOP` remain responsive.
@@ -443,7 +519,7 @@ struct RangeState {
 };
 
 enum class UwbLinkState {
-  AwaitReady, AwaitConfigAck, Stopped,
+  Uninitialized, AwaitReady, AwaitConfigAck, Stopped,
   AwaitStartAck, Ranging, AwaitStopAck
 };
 
@@ -455,12 +531,13 @@ class UwbHost {
   bool nextTxLine(char* out, size_t capacity);
   void requestStart();
   void requestStop();
+  void requestStatus();
   UwbLinkState linkState() const;
   const RangeState& range() const;
 };
 ```
 
-`nextTxLine` retrieves at most one complete line from a fixed-capacity outbound queue and returns immediately; serial ownership and nonblocking writes remain with the caller.
+`nextTxLine` retrieves at most one complete line from a fixed-capacity outbound queue and returns immediately; serial ownership and nonblocking writes remain with the caller. A newly constructed host is `Uninitialized`. `requestStatus()` is valid after `begin()` in every link state, queues exactly one bounded `V1 STATUS` request without waiting, and neither changes the primary link state nor clears or replaces an active range. At most one STATUS transaction may be outstanding: if the outbound queue is full, one pending STATUS intent is retained and queued when capacity next becomes available; a fixed-interval retry queues at most one replacement after the prior line has been retrieved, and parsing `V1 STATUS state=...` completes that status transaction. Calling `requestStatus()` while uninitialized is a no-op, and repeated calls while one is pending or outstanding do not consume more queue entries.
 
 - [ ] **Step 1: Write fail-first host tests**
 
@@ -469,7 +546,9 @@ Test byte-at-a-time input split at every possible boundary for a valid sequence-
 - `begin` sets running as the boot intent, queues `HELLO`, and enters `AwaitReady`;
 - `READY` means unconfigured and causes `CONFIG` to be queued, CONFIG ACK automatically causes `START` to be queued for the boot intent, and START ACK enters `Ranging`;
 - `requestStop` queues `STOP`, STOP ACK enters configured `Stopped`, and `requestStart` can start again without blocking;
+- `requestStatus` queues `V1 STATUS` from every initialized link state, a parsed `V1 STATUS state=ranging` completes the outstanding STATUS transaction without changing that state or the active range, and the uninitialized call is a no-op;
 - a command timeout retries only the currently awaited `HELLO`, `CONFIG`, `START`, or `STOP` line, using a fixed retry interval and bounded queue;
+- STATUS has an independent single-outstanding retry timer: test its first queueing, retry after retrieval, coalescing of repeated requests, full-queue pending behavior, and eventual queueing after capacity opens, with no queue overflow;
 - a `READY` received while ranging clears availability and restarts CONFIG/START handshake;
 - simulated READY-triggered recovery with ACKs restores ranging and equivalent range availability within 5000 ms;
 - `nextTxLine` returns immediately for both empty and non-empty queues and reports insufficient caller capacity without a partial line;
@@ -484,7 +563,7 @@ Run the test and expect compilation failure before creating `uwb-host.cpp`.
 
 Use a fixed 161-byte receive buffer and a fixed-capacity outbound-line queue. Overflow discards through the next newline and increments an error counter. Call the shared parser only on complete lines. Store `receivedMs` separately from radio `sampleMs` for local stale detection.
 
-Use a fixed retry interval no greater than 500 ms. `begin` sets running as the requested boot intent and queues `HELLO`; `READY` queues `CONFIG`; matching ACKs automatically advance to START and ranging. Retry only the line for the current await state. A `READY` in any later state clears range availability and restarts CONFIG, while preserving the host's requested running/stopped intent. No method writes a serial port or waits for queue space.
+Use a fixed retry interval no greater than 500 ms. `begin` sets running as the requested boot intent and queues `HELLO`; `READY` queues `CONFIG`; matching ACKs automatically advance to START and ranging. Retry only the line for the current await state. Track STATUS request/pending/retry state separately from `UwbLinkState`; status traffic must obey the same fixed queue bound, and handshake/control commands take priority over pending or retry STATUS entries. A `READY` in any later state clears range availability and restarts CONFIG, while preserving the host's requested running/stopped intent. No method writes a serial port or waits for queue space.
 
 - [ ] **Step 3: Run host/protocol/math/transaction tests**
 
@@ -513,6 +592,7 @@ Do not add `.ino` UART constants or integration in this task; those must land at
 - Modify: `docs/wiring/expansion.md`
 - Modify: `hardware/bom.md`
 - Modify: `hardware/uwb/makerfabs/README.md`
+- Modify: `hardware/uwb/makerfabs/board-audit.json`
 - Modify: `scripts/check-makerfabs-audit.py`
 - Test: `scripts/check-wiring-docs.sh`
 
@@ -537,7 +617,7 @@ Recheck the audited candidates against the then-current pin map before promotion
 
 Add the exact robot TX/RX constants, dedicated `HardwareSerial` initialization at 115200 8N1, nonblocking receive drain, `tick(millis())`, and bounded `nextTxLine` serial writes to `sesame-s3-pca9685.ino`. Never wait for a line, ACK, transmit capacity, or range; leave PCA9685/OLED/Wi-Fi scheduling unchanged and expose current/stale/unavailable range state without using stale data as position.
 
-Update the `.ino`, pin map, netlist, power document, expansion guide, BOM, audit cross-check, and Makerfabs README integration table as one change. Do not reuse a reserved or forbidden GPIO. If either candidate conflicts with another function, stop and revise the audit candidate and selection reason before changing any authoritative file; never document a multiplexed connection.
+Update the `.ino`, pin map, netlist, power document, expansion guide, BOM, audit JSON, audit cross-check, and Makerfabs README integration table as one change. Do not reuse a reserved or forbidden GPIO. If either candidate conflicts with another function, stop and revise the candidate GPIOs in `board-audit.json` and their selection reason before changing any authoritative file. The updated audit JSON and selection reason must be committed in the same commit as the `.ino`, pin map, netlist, power document, expansion guide, BOM, integration table, and audit checker; never document a multiplexed connection.
 
 - [ ] **Step 3: Update power, expansion, BOM, and integration table**
 
@@ -554,7 +634,8 @@ bash scripts/test-uwb-protocol.sh
 git add firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino \
   docs/wiring/pin-map.md docs/wiring/netlist.md docs/wiring/power.md \
   docs/wiring/expansion.md hardware/bom.md \
-  hardware/uwb/makerfabs/README.md scripts/check-makerfabs-audit.py
+  hardware/uwb/makerfabs/README.md hardware/uwb/makerfabs/board-audit.json \
+  scripts/check-makerfabs-audit.py
 git diff --cached --check
 git commit -m "Integrate verified Makerfabs Stage 2 wiring"
 ```
@@ -585,22 +666,24 @@ recovery_ms,uart_reconnected,servo_active,oled_ok,wifi_ok,supply_min_v,
 supply_max_v
 ```
 
-Use `unit-1`/`unit-2` for the Makerfabs source and `host-1`/`host-2` for the robot host that recorded the UART event. Range rows use `event_type=range`; two-minute dropout rows use `event_type=stationary`. Recovery and integration rows use the exact required event names below. `sequence` is the UWB transaction sequence, not a CSV row number.
+The only allowed concrete identities are `makerfabs-1`, `makerfabs-2`, `robot-1`, and `robot-2`. The value `both` is additionally allowed only in both identity columns for the whole-system `uwb-loss` and `coexistence` events; it is invalid for every other event. The `unit` column accepts Makerfabs identities (or the constrained `both`) and the `host` column accepts robot identities (or the constrained `both`). Range rows use `event_type=range`; two-minute dropout rows use `event_type=stationary`. Recovery and integration rows use the exact required event names below. `sequence` is the UWB transaction sequence, not a CSV row number.
 
 The analyzer must enforce:
 
-- `range` targets 500, 1000, 2000, and 5000 mm for both `host-1` and `host-2`;
+- `range` targets 500, 1000, 2000, and 5000 mm for both `robot-1` and `robot-2`;
 - at least 120 `range` samples per host at every target;
-- every `(run, target_mm, sequence)` range transaction has exactly one row per host, and both rows have equivalent `valid` and `reported_mm` values;
+- every `(run, target_mm, sequence)` range transaction contains exactly two rows: one with (`unit`, `host`) = (`makerfabs-1`, `robot-1`) and one with (`makerfabs-2`, `robot-2`), with no duplicate or additional pair, and both rows have equivalent `valid` and `reported_mm` values;
 - median absolute error at most 200 mm at every target for each host;
 - at least two valid ranges per second for each host;
 - at least 90 percent valid samples for each host over a two-minute stationary run;
 - explicit rows for every required event type: `reboot-unit-1`, `reboot-unit-2`, `uart-tx-disconnect`, `uart-rx-disconnect`, `uwb-loss`, and `coexistence`;
-- both required reboot events have recovery values at most 5000 ms;
+- `reboot-unit-1` occurs with (`makerfabs-1`, `robot-1`) and `reboot-unit-2` with (`makerfabs-2`, `robot-2`), and both have recovery values at most 5000 ms;
+- each of `uart-tx-disconnect` and `uart-rx-disconnect` has at least one row for (`makerfabs-1`, `robot-1`) and at least one for (`makerfabs-2`, `robot-2`);
+- `uwb-loss` and `coexistence` each use exactly (`both`, `both`);
 - all applicable UART reconnect, servo, OLED, and Wi-Fi flags are true; and
 - supply values are within the limits documented in `docs/wiring/power.md`.
 
-In `tests/analyze-stage2-acceptance-test.py`, generate minimal otherwise-passing fixtures and remove one host's target samples or one required event at a time. Assert each omission fails, then assert the complete fixture passes. Also cover mismatched sequence-bound host values and reboot recovery over 5000 ms.
+In `tests/analyze-stage2-acceptance-test.py`, generate minimal otherwise-passing fixtures and assert the complete fixture passes. Add negative fixtures for an invalid identity, a crossed Makerfabs/robot pair, a duplicated range pair, an omitted range pair, each omitted required event, and mismatched paired `valid` or `reported_mm` values. Also cover removal of one host's target samples and reboot recovery over 5000 ms. Every malformed fixture must fail for its intended reason.
 
 Run the analyzer against the absent acceptance CSV and the test suite; expect failure before implementation/data exists.
 
@@ -618,11 +701,11 @@ Record separate rows with these exact `event_type` values:
 - `uart-rx-disconnect`; and
 - `uwb-loss`.
 
-Identify the affected `unit` and observing `host` on each row. Robot movement/OLED tasks must continue; stale data must become unavailable rather than remaining current. For both reboot events, measure from READY/reboot detection through the repeated CONFIG/START handshake to equivalent range delivery on both hosts; recovery over five seconds fails.
+Map `reboot-unit-1` to (`makerfabs-1`, `robot-1`) and `reboot-unit-2` to (`makerfabs-2`, `robot-2`). Record separate `uart-tx-disconnect` and `uart-rx-disconnect` rows for each of (`makerfabs-1`, `robot-1`) and (`makerfabs-2`, `robot-2`). Record `uwb-loss` as (`both`, `both`). Robot movement/OLED tasks must continue; stale data must become unavailable rather than remaining current. For both reboot events, measure from READY/reboot detection through the repeated CONFIG/START handshake to equivalent range delivery on both hosts; recovery over five seconds fails.
 
 - [ ] **Step 4: Execute coexistence and power tests**
 
-With UWB ranging and Wi-Fi active, operate OLED and the verified three servos. Record this as an explicit `coexistence` event with unit, host, rail minimum/maximum, and radio behavior. If the eight-servo harness has since passed its separate power gate, repeat with representative eight-servo motion; otherwise state that it remains a separate production acceptance item.
+With UWB ranging and Wi-Fi active, operate OLED and the verified three servos. Record this as an explicit `coexistence` event with (`unit`, `host`) = (`both`, `both`), rail minimum/maximum, and radio behavior. If the eight-servo harness has since passed its separate power gate, repeat with representative eight-servo motion; otherwise state that it remains a separate production acceptance item.
 
 - [ ] **Step 5: Analyze and record the result**
 
@@ -690,6 +773,6 @@ Expected: all applicable checks pass and the working tree is clean.
 - Tasks follow all six hardware/firmware gates from the approved design.
 - Delivered-board facts and candidate GPIOs are captured before pins or power enter authoritative documents; `.ino` integration and all affected records commit together.
 - The UART protocol has exact syntax, ACKs, bounded receive/transmit APIs, retry/recovery state, fail-first tests, and explicit failure behavior.
-- DS-TWR timestamp mapping, Result correlation, math, and robot-host parsing are independently host-testable.
-- Acceptance requires paired equal host values and all named event cases while retaining the design thresholds: 0.20 m median absolute error, two valid ranges per second, under 10 percent invalid samples, and five-second reboot recovery.
+- DS-TWR timestamp mapping, Result correlation, math, and robot-host parsing are independently host-testable; transaction tests link the same production core consumed by the `.ino`.
+- Acceptance requires the exact two Makerfabs/robot identity pairs per range transaction, mapped recovery/integration events, paired equal host values, and all named event cases while retaining the design thresholds: 0.20 m median absolute error, two valid ranges per second, under 10 percent invalid samples, and five-second reboot recovery.
 - Four-robot TDMA is explicitly outside Stage 2 and starts only after a measured PASS.

@@ -156,6 +156,7 @@ Requirements:
 - `CONFIG` is accepted only while stopped, and each accepted `CONFIG`, `START`, or `STOP` produces the matching `V1 ACK command=CONFIG|START|STOP` event;
 - robot-host boot and recovery use the same handshake: send `HELLO`, wait for `READY`, send `CONFIG`, wait for its ACK, send `START`, and wait for its ACK;
 - a command timeout retries the command currently awaiting acknowledgement; a `READY` received while ranging immediately clears range availability and restarts the handshake;
+- the robot host exposes `void requestStatus();` after initialization in every link state; it queues one bounded `V1 STATUS` transaction without blocking, coalesces repeated requests, retries independently within the fixed-capacity outbound queue until `V1 STATUS state=...` arrives, and never changes link state or disrupts an active range; calling it on an uninitialized host is a no-op;
 - host parsing, retry timing, and bounded outbound-line retrieval cannot block robot control or require a blocking serial write;
 - malformed lines, unknown commands, unsupported protocol versions, and ACKs for commands not currently awaited return or are treated as errors without changing active configuration;
 - every `RANGE` includes the UWB transaction sequence so the two robot hosts can correlate equivalent results;
@@ -225,9 +226,11 @@ For each sequence, define the six 40-bit DW3000 timestamps exactly as follows:
 
 Use wrap-safe 40-bit subtraction to map `roundA = t4 - t1`, `replyA = t3 - t2`, `roundB = t6 - t3`, and `replyB = t5 - t4`. Poll and Response establish the sequence and addressed initiator/responder pair. Final carries `t1`, `t4`, and `t5`; the responder combines them with local `t2`, `t3`, and `t6`, calculates the range and quality, emits its local sequence-bearing `V1 RANGE`, then sends a fourth Result frame containing the same range and quality. Result carries the same sequence, initiator address, and responder address. The initiator validates all three fields before emitting an equivalent local `V1 RANGE`; a wrong-address, wrong-sequence, or missing Result cannot publish a range. This is transaction correlation and addressing, not cryptographic authentication.
 
+Implement this behavior in production plain-C++ `ds-twr-transaction.h/.cpp`, which owns configured initiator/responder addresses, sequence allocation and correlation, `t1` through `t6`, transaction state and wrap-safe timeout, responder calculation and Result construction, and initiator Result validation. The Makerfabs `.ino` consumes that same core and retains only radio API calls, frame encoding/decoding, and UART publication; it must not duplicate transaction logic. Host transaction tests compile and link the production `.cpp`, including wrong sequence, each wrong address, missing Result timeout, 40-bit wrap, and equal endpoint Result values.
+
 ### Gate 4 — robot-host integration
 
-Implement a bounded UART parser, bounded outbound command queue, explicit link state, retry timer, and range-state record on the ESP32-S3. Verify the HELLO/READY/CONFIG-ACK/START-ACK boot sequence, start, stop, status, malformed input, disconnect/reconnect, stale-range expiry, and Makerfabs reboot while PCA9685 and OLED tasks continue operating. Recovery to equivalent range delivery on both hosts within five seconds must be testable without blocking reads or writes.
+Implement a bounded UART parser, bounded outbound command queue, explicit link state, retry timer, range-state record, and the `requestStatus()` control on the ESP32-S3. Verify the HELLO/READY/CONFIG-ACK/START-ACK boot sequence, start, stop, STATUS queueing/parsing/retry/queue-capacity behavior, malformed input, disconnect/reconnect, stale-range expiry, and Makerfabs reboot while PCA9685 and OLED tasks continue operating. STATUS must remain available without disrupting an active range. Recovery to equivalent range delivery on both hosts within five seconds must be testable without blocking reads or writes.
 
 After delivered-board inspection selects pins, update the robot sketch's UART constants and integration, `docs/wiring/pin-map.md`, `docs/wiring/netlist.md`, `docs/wiring/power.md`, `docs/wiring/expansion.md`, the BOM, the arrival-audit cross-check, and the integration table in one commit.
 
@@ -244,7 +247,7 @@ The two complete robot/controller pairs pass when:
 - Wi-Fi remains usable with both radio systems active; and
 - measured supply voltage remains within the documented rail limits during representative servo motion.
 
-Acceptance evidence uses CSV columns for `event_type`, `unit`, and `host`, as well as the transaction sequence for range rows. Every target must contain at least 120 range samples delivered to each robot host, and the analyzer must reject any sequence whose two host rows do not carry equivalent range values. It must also reject a data set unless it contains explicit `reboot-unit-1`, `reboot-unit-2`, `uart-tx-disconnect`, `uart-rx-disconnect`, `uwb-loss`, and `coexistence` events. These completeness checks are in addition to, not replacements for, every numeric and boolean threshold above.
+Acceptance evidence uses CSV columns for `event_type`, `unit`, and `host`, as well as the transaction sequence for range rows. The only concrete identities are `makerfabs-1`, `makerfabs-2`, `robot-1`, and `robot-2`; `both` is allowed only as (`unit`, `host`) = (`both`, `both`) for whole-system `uwb-loss` and `coexistence` events. Every target must contain at least 120 range samples delivered to each robot host. Every range transaction must contain exactly (`makerfabs-1`, `robot-1`) and (`makerfabs-2`, `robot-2`), with no duplicate, omitted, crossed, or additional pair, and the analyzer must reject any sequence whose two rows do not carry equivalent range values. `reboot-unit-1` maps to (`makerfabs-1`, `robot-1`) and `reboot-unit-2` to (`makerfabs-2`, `robot-2`); both `uart-tx-disconnect` and `uart-rx-disconnect` require at least one event for each corresponding unit/host pair; and `uwb-loss` and `coexistence` map to (`both`, `both`). The analyzer must reject invalid identities, bad mappings, omitted required events, and mismatched paired values. These completeness checks are in addition to, not replacements for, every numeric and boolean threshold above.
 
 The all-eight-servo test remains a separate production-power acceptance gate if the full harness is not yet available.
 
@@ -275,11 +278,11 @@ Immediate documentation verification:
 Future firmware verification:
 
 - parser tests are written before robot-host parser implementation;
-- protocol state tests cover stopped/configured/ranging/error transitions, command ACKs, timeout retries, and READY-triggered recovery;
+- protocol state tests cover stopped/configured/ranging/error transitions, command ACKs, timeout retries, bounded STATUS queueing/parsing/retry behavior, and READY-triggered recovery;
 - malformed, overlong, stale, unsupported-version, wrong-sequence, wrong-address, and missing-Result inputs are fail-first tests;
 - timestamp tests prove the six-timestamp interval mapping and wrap-safe subtraction;
-- transaction tests prove equivalent sequence-bound range values reach both robot hosts;
-- acceptance-analyzer tests prove that each required event and either host's samples cannot be omitted;
+- transaction tests link the production transaction core consumed by the `.ino` and prove equivalent sequence-bound range values reach both robot hosts;
+- acceptance-analyzer tests prove exact identities and mappings, unique required pairs, paired-value agreement, and that each required event and either host's samples cannot be omitted;
 - Makerfabs radio firmware is tested independently before UART integration; and
 - every hardware gate produces a dated acceptance record with commands, firmware revisions, measurements, and pass/fail results.
 
