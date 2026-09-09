@@ -17,14 +17,17 @@ ok()  { echo "  ok: $*"; }
 mark() { before=$fail; }
 done_ok() { [ "$fail" -eq "$before" ] && ok "$*"; }
 
-DOCS=$(find docs/wiring docs/upstream hardware -name '*.md' 2>/dev/null
-       ls ARCHITECTURE.md AGENTS.md 2>/dev/null)
-[ -n "$DOCS" ] || { echo "no deliverable docs found yet"; exit 0; }
+DOCS=()
+while IFS= read -r f; do
+  DOCS+=("$f")
+done < <(find docs/wiring docs/upstream hardware -name '*.md' 2>/dev/null
+         ls ARCHITECTURE.md AGENTS.md 2>/dev/null)
+[ "${#DOCS[@]}" -gt 0 ] || { echo "no deliverable docs found yet"; exit 0; }
 
 # 1. No placeholders anywhere.
-if grep -rniE '\b(TBD|TODO|FIXME|XXX)\b' $DOCS >/dev/null 2>&1; then
+if grep -rniE '\b(TBD|TODO|FIXME|XXX)\b' "${DOCS[@]}" >/dev/null 2>&1; then
   err "placeholder markers found:"
-  grep -rniE '\b(TBD|TODO|FIXME|XXX)\b' $DOCS >&2
+  grep -rniE '\b(TBD|TODO|FIXME|XXX)\b' "${DOCS[@]}" >&2
 else
   ok "no placeholders"
 fi
@@ -37,7 +40,7 @@ fi
 #    See docs/wiring/pin-map.md for the reasoning and the datasheet cite.
 mark
 for pin in 0 19 20 43 44 45 46 47 48; do
-  if grep -rnE "^\|.*GPIO ?${pin}\b" $DOCS 2>/dev/null \
+  if grep -rnE "^\|.*GPIO ?${pin}\b" "${DOCS[@]}" 2>/dev/null \
      | grep -viE 'reserved|do not use|forbidden|never|strapping|boot|USB|UART|RGB' >/dev/null; then
     err "forbidden GPIO${pin} appears as an assignment"
   fi
@@ -45,7 +48,7 @@ done
 done_ok "no forbidden GPIO assignments"
 
 # 3. I2C addresses must be exactly these two.
-addrs=$(grep -rhoE '0x[0-9A-Fa-f]{2}' $DOCS | sort -u | tr '\n' ' ')
+addrs=$(grep -rhoE '0x[0-9A-Fa-f]{2}' "${DOCS[@]}" | sort -u | tr '\n' ' ')
 if [ "$(echo $addrs)" != "0x3C 0x40" ]; then
   err "unexpected I2C addresses: $addrs (expected '0x3C 0x40')"
 else
@@ -63,9 +66,9 @@ ok "dual-supply invariant checked"
 
 # 5. RSTn must always carry the open-drain warning.
 mark
-for f in $(grep -rl 'RSTn' $DOCS 2>/dev/null); do
+while IFS= read -r f; do
   grep -qiE 'open.?drain' "$f" || err "$f mentions RSTn without the open-drain warning"
-done
+done < <(grep -rl 'RSTn' "${DOCS[@]}" 2>/dev/null)
 done_ok "RSTn warning present wherever RSTn appears"
 
 # 6. Internal links must resolve.
@@ -73,7 +76,7 @@ done_ok "RSTn warning present wherever RSTn appears"
 # anything starting with 'h' to dodge http also silently skipped every
 # relative link under hardware/.
 mark
-for f in $DOCS; do
+for f in "${DOCS[@]}"; do
   d=$(dirname "$f")
   for l in $(grep -oE '\]\([^)#]+' "$f" 2>/dev/null | sed -E 's/^\]\(//'); do
     [ -z "$l" ] && continue
