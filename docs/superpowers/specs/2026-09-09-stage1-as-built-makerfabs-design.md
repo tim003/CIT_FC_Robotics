@@ -1,157 +1,264 @@
-# Stage 1 as-built record and Makerfabs UWB transition design
+# Photo-Based Stage 1 Record and Makerfabs Stage 2 Design
 
 **Date:** 2026-09-09
-**Status:** Approved
+**Status:** Approved design
 
 ## Purpose
 
-Bring the wiring documentation into line with two new facts:
+Replace the unverified generated wiring diagrams with a Stage 1 record based on the colleague-tested wiring table and perfboard layout, then define the full Stage 2 integration path for the two purchased Makerfabs ESP32 UWB DW3000 WROOM boards.
 
-1. A colleague built and tested the photographed Stage 1 perfboard assembly for
-   power, GPIO2/GPIO3 I2C, and three-servo movement.
-2. Two Makerfabs **ESP32 UWB DW3000 WROOM** boards have been purchased for the
-   next positioning experiment.
+The netlist remains the authority for production construction. Photographs and tables record evidence and intent; they do not prove hidden connections.
 
-The photographs are valuable bench evidence, but they do not prove the hidden
-underside netlist, an eight-servo load, Wi-Fi operation in the stacked physical
-layout, or any UWB integration. The documentation must preserve that boundary
-instead of describing the photographed board as a fully verified robot.
+## Scope
 
-## Decisions
+This design covers:
 
-### Two Stage 1 records
+1. retiring every generated wiring SVG and its generator;
+2. documenting the tested Stage 1 build from two raster sources;
+3. preserving the distinction between the colleague-tested build and the safer production target;
+4. integrating one Makerfabs UWB board as a coprocessor on each robot;
+5. a two-board ranging and robot-integration acceptance sequence; and
+6. the gate for later four-robot scaling.
 
-The repository will document two related but different Stage 1 designs:
+It does not assign Stage 2 GPIOs or power pins before the delivered boards are inspected. It does not design the four-robot TDMA schedule.
 
-- **As-built bench assembly:** a historical, physical record matching
-  `hardware/circuit layout/`. It records the component placement and the
-  limited tests that passed.
-- **Production target:** the safer electrical design in
-  `docs/wiring/netlist.md`, including star power distribution, PCA9685 `OE`,
-  local bulk capacitance, and radio antenna clearance.
+## Authoritative Stage 1 evidence
 
-The production netlist remains the source of truth for new construction. The
-as-built record does not silently replace it.
+### Verified wiring table
+
+Copy the supplied screenshot from the desktop inbox into the repository as:
+
+`hardware/circuit layout/2026-09-07-stage1-verified-wiring-table.png`
+
+The table records the colleague-tested Stage 1 connections:
+
+| Function | Connection |
+|---|---|
+| Battery input | 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
+| Main 5 V supply | LM2596S `OUT+`, adjusted to 5.0 V, to ESP32-S3 `5V` and PCA9685 servo `V+` |
+| Main ground | LM2596S `OUT-` to the shared perfboard ground rail and every module ground |
+| I2C data | SSD1306 `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
+| I2C clock | SSD1306 `SCL` and PCA9685 `SCL` to ESP32-S3 GPIO3 |
+| Logic supply | SSD1306 `VCC` and PCA9685 logic `VCC` to ESP32-S3 `3V3(OUT)` |
+| Servo signals | MG90S servos 1–3 signal wires to PCA9685 channels 0, 1, and 2 |
+| Servo power | Servos 1–3 red wires to PCA9685 `V+`; brown/black wires to PCA9685 `GND` |
+
+The photographed source labels the battery-side voltage as 6.8 V at the captured condition. The build uses a nominal 2S 14500 pack; the image is not a battery specification.
+
+### Perfboard layout
+
+`hardware/circuit layout/20260901_CircuitBoardDesign_002_Fixed.jpg` is the physical routing and placement reference for the tested board. It shows the rail routing and intended module locations but cannot prove underside continuity or every installed connection.
 
 ### Verification boundary
 
-The Stage 1 as-built assembly is verified only for:
+Verified:
 
-- power-up;
-- I2C on ESP32-S3 GPIO2/GPIO3; and
-- movement of three servos.
+- power-up through the LM2596S;
+- shared GPIO2/GPIO3 I2C operation; and
+- movement of three servos on PCA9685 channels 0–2.
 
-It is not verified for:
+Not verified:
 
-- all eight servos or simultaneous load;
-- Wi-Fi association or access-point operation in the photographed placement;
-- the production power improvements;
-- UWB; or
-- complete hidden-net agreement with the production netlist.
+- all eight servos;
+- simultaneous eight-servo current;
+- complete animation playback;
+- Wi-Fi in the stacked perfboard placement;
+- UWB; and
+- exact agreement of hidden underside wiring with the production netlist.
 
-### Antenna treatment
+### Production-target separation
 
-The photographed ESP32-S3 is mounted with its antenna end over the perfboard
-and close to/under the stacked PCA9685. That placement does not satisfy the
-conservative keep-out in `docs/wiring/antenna.md`. It may remain in the
-historical as-built record, but it must not be copied into the production
-layout without a completed in-assembly Wi-Fi acceptance test.
+The tested build uses 5.0 V and a compact stacked arrangement. The production target retains its separate requirements in the wiring documents:
 
-The production diagram will show the ESP32 antenna end overhanging the carrier
-board with no PCA9685, LM2596S, copper, wiring bundle, screw, or bracket in the
-keep-out region.
+- antenna overhang and keep-out;
+- star-branch power distribution;
+- PCA9685 output-enable control;
+- the 1000 µF servo bulk capacitor;
+- explicit separation of PCA9685 logic `VCC` and servo `V+`; and
+- a power-budget review before eight servos or UWB share a supply.
 
-### Makerfabs replaces the direct-DWM3000 Stage 2 picture
+The tested images do not override those requirements.
 
-The purchased Makerfabs product is a complete ESP32 + DW3000 board. It is not a
-bare DWM3000 radio wired directly to the robot ESP32-S3 over SPI. The Stage 2
-architecture is therefore:
+## Diagram retirement
+
+Delete the entire generated-diagram implementation:
+
+- every `.svg` under `docs/wiring/diagrams/`;
+- `docs/wiring/diagrams/generate.py`;
+- `docs/wiring/diagrams/README.md`; and
+- the abandoned `tests/test_wiring_diagrams.py` work.
+
+Update all internal links and prose that refer to these diagrams. Git history is the archive; no obsolete generator remains capable of recreating them.
+
+No new vector or Mermaid diagram replaces them in this phase. Stage 1 uses evidence-backed raster images and text. Stage 2 uses text, wiring tables, interface contracts, and acceptance records until delivered hardware establishes the physical facts.
+
+## Stage 2 hardware architecture
+
+Each robot uses two controllers:
 
 ```text
-robot ESP32-S3 controller <-> provisional UART link <-> Makerfabs ESP32 UWB DW3000
+Robot ESP32-S3 Super Mini
+  I2C -> PCA9685 and SSD1306
+  UART -> Makerfabs ESP32 UWB DW3000 WROOM
+             onboard SPI -> DW3000
 ```
 
-The Makerfabs board owns UWB ranging and scheduling. The robot ESP32-S3 retains
-servo, display, behaviour, and higher-level swarm control.
+### Robot ESP32-S3 responsibilities
 
-The current direct-SPI UWB header remains an unpopulated base-build reservation
-until the delivered Makerfabs board revision and interfaces are inspected. No
-GPIO assignment, power net, or soldering row changes in this documentation
-pass. When the boards arrive, their schematic, header pins, current draw, and
-UART behaviour must be verified before `pin-map.md` and `netlist.md` change.
+- movement and PCA9685 control;
+- OLED output;
+- Wi-Fi and higher-level swarm behavior;
+- authoritative robot/node identity; and
+- consumption, expiry, and publication of range measurements.
 
-### Diagram roles
+### Makerfabs board responsibilities
 
-The four generated SVGs are retained, including the user's current filenames:
+- DW3000 initialization and radio diagnostics;
+- UWB timestamp handling;
+- dual-sided two-way ranging;
+- peer scheduling within the current two-node phase; and
+- delivery of processed range/status events over UART.
 
-| Diagram | New role |
-|---|---|
-| `1a-no-uwb-Paul.svg` | Stage 1 production target, no UWB |
-| `1b-no-uwb-Claude.svg` | Stage 1 as-built perfboard and verification boundary |
-| `2a-uwb-based-on-1a.svg` | Provisional one-robot Makerfabs UART architecture |
-| `2b-uwb-based-on-1b.svg` | Provisional two-robot acceptance-test topology |
+The robot ESP32-S3 does not handle raw UWB timing. The Makerfabs ESP32 does not command servos.
 
-`generate.py` remains the only editable diagram source. Generated SVGs are not
-hand-edited.
+## Stage 2 UART boundary
 
-### Photo provenance
+Use 115200 baud, 8 data bits, no parity, and one stop bit. Messages are newline-delimited ASCII during Stage 2 so both endpoints can be diagnosed with an ordinary serial console.
 
-`hardware/circuit layout/README.md` will identify:
+Each line begins with protocol version `V1`.
 
-- `20260901_CircuitBoardDesign_002_Fixed.jpg` as the colleague's as-built layout
-  reference;
-- the files under `photos/` as assembly evidence; and
-- the exact verification boundary above.
+Host commands:
 
-Photographs are not promoted to a soldering netlist. A photo cannot establish
-all underside connections, wire gauge, source-selection behaviour, or measured
-rail performance.
+```text
+V1 HELLO
+V1 CONFIG node=<node-id> peer=<peer-id>
+V1 START
+V1 STOP
+V1 STATUS
+```
 
-## Roadmap
+Coprocessor events:
 
-### Stage 1 — partially bench-verified
+```text
+V1 READY fw=<version> node=<node-id>
+V1 RANGE peer=<peer-id> mm=<distance> quality=<driver-value> sample_ms=<timestamp>
+V1 STATUS state=<state>
+V1 ERROR code=<code>
+```
 
-Power, I2C, and three-servo movement have passed on the photographed assembly.
-The production target still needs to be built and tested with all eight servos,
-including rail sag/current measurements and a Wi-Fi acceptance test in the
-final mechanical assembly.
+Requirements:
 
-### Stage 2 — hardware purchased, integration pending
+- node IDs are runtime configuration, not separate firmware binaries;
+- `CONFIG` is accepted only while stopped;
+- malformed lines, unknown commands, and unsupported protocol versions return `V1 ERROR` and do not change the active configuration;
+- a range older than three expected update intervals is stale and cannot be consumed as current position data;
+- line parsing is bounded and cannot block robot control; and
+- the raw quality field is documented after the selected DW3000 driver establishes its meaning.
 
-Two Makerfabs ESP32 UWB DW3000 WROOM boards are purchased. On arrival:
+A binary UART protocol is deferred unless measurements show that ASCII framing is inadequate.
 
-1. Record board revision and compare the delivered board with the Makerfabs
-   schematic.
-2. Identify exposed power, ground, UART, and programming pins by primary source
-   and continuity where necessary.
-3. Measure idle and ranging current independently of the servo rail.
-4. Run the supplied two-board ranging examples before writing integration code.
-5. Establish the UART message boundary between UWB coprocessor and robot MCU.
-6. Select robot GPIOs only after the interface is demonstrated.
-7. Update `pin-map.md`, `netlist.md`, power budget, and diagrams together.
+## Power and physical integration gates
 
-### Stage 3 — fleet scaling
+No Makerfabs UART GPIO, connector pin, or robot power feed becomes authoritative before board arrival.
 
-Only after the two-board experiment succeeds: buy the remaining boards, define
-four-node scheduling, and validate update rate and all-pairs ranging under
-servo and Wi-Fi activity.
+Bench integration order:
 
-## Documentation changes
+1. power the robot controller and Makerfabs board separately over USB;
+2. connect a common signal ground before UART TX/RX;
+3. verify logic levels and crossed TX/RX using the delivered board revision;
+4. measure Makerfabs idle, ranging-average, and peak current;
+5. compare the result with the existing eight-servo power budget; and
+6. choose either the existing 5 V rail, a dedicated regulator, or continued separate power based on measured headroom.
 
-- Create `hardware/circuit layout/README.md`.
-- Rework `docs/wiring/diagrams/generate.py` and regenerate all four SVGs.
-- Update `docs/wiring/diagrams/README.md` to explain the new diagram roles.
-- Update `docs/wiring/README.md`, `docs/wiring/expansion.md`,
-  `hardware/bom.md`, `ARCHITECTURE.md`, and `AGENTS.md` with the stage and
-  purchase status.
-- Do not change the netlist or pin map in this pass.
+If a shared supply is selected, the pin map, netlist, power document, BOM, and Stage 2 wiring table change together.
 
-## Verification
+The ESP32-S3 Wi-Fi antenna and Makerfabs UWB antenna each require clear placement. Final spacing and orientation are established by coexistence tests, not product photographs.
 
-- Diagram tests assert the four filenames and semantic roles.
-- All generated SVGs parse as XML.
-- Regeneration is deterministic.
-- `bash scripts/check-wiring-docs.sh` passes.
-- Rendered diagrams receive a visual inspection for clipped labels, crossed
-  wires, and incorrect stage markings.
-- `.DS_Store`, unrelated files, and temporary renders are not staged.
+## Stage 2 acceptance sequence
+
+### Gate 1 — arrival audit
+
+For both boards:
+
+- photograph front and back;
+- record board revision, module markings, and WROOM identity;
+- match the delivered headers to the correct schematic;
+- identify UART, ground, reset, and supported power inputs;
+- verify logic voltage; and
+- identify the UWB antenna edge and required keep-out.
+
+### Gate 2 — unmodified standalone baseline
+
+Build and flash the supplied Makerfabs DW3000 examples without modifying radio behavior. At measured 0.5 m, 1 m, 2 m, and 5 m line-of-sight separations, record:
+
+- reported range distribution;
+- fixed bias;
+- valid update rate;
+- dropped/invalid samples; and
+- recovery after resetting either board.
+
+This gate proves the purchased hardware and local toolchain before custom firmware is introduced.
+
+### Gate 3 — two-node DS-TWR coprocessor firmware
+
+Implement deterministic two-node dual-sided two-way ranging on the Makerfabs boards. Configure node identities at runtime. Keep all radio timing local to the Makerfabs ESP32 and expose only the approved UART contract.
+
+### Gate 4 — robot-host integration
+
+Implement a bounded UART parser and range-state record on the ESP32-S3. Verify start, stop, status, malformed input, disconnect/reconnect, stale-range expiry, and Makerfabs reboot while PCA9685 and OLED tasks continue operating.
+
+After delivered-board inspection selects pins, update `docs/wiring/pin-map.md`, `docs/wiring/netlist.md`, `docs/wiring/power.md`, and the integration table in one commit.
+
+### Gate 5 — complete two-robot acceptance
+
+The two complete robot/controller pairs pass when:
+
+- median absolute range error is at most 0.20 m at 0.5 m, 1 m, 2 m, and 5 m line-of-sight;
+- each pair produces at least two valid ranges per second;
+- invalid or missing samples remain below 10 percent during a two-minute stationary run;
+- either Makerfabs board can reboot and resume valid range delivery within five seconds;
+- UART disconnect/reconnect does not reset or stall robot control;
+- OLED and three-servo operation continue during ranging;
+- Wi-Fi remains usable with both radio systems active; and
+- measured supply voltage remains within the documented rail limits during representative servo motion.
+
+The all-eight-servo test remains a separate production-power acceptance gate if the full harness is not yet available.
+
+### Gate 6 — four-robot decision
+
+Purchase or install two more UWB boards only after Gate 5 passes. Four-robot work then receives a separate design for six pairwise ranges, TDMA scheduling, coordinator recovery, and update-rate allocation. Stage 2 does not pre-commit that protocol.
+
+## Failure handling
+
+- A UWB failure cannot stop servo control or OLED updates.
+- Missing ranges expire to an explicit stale/unavailable state; old data is never silently reused.
+- Unknown peers are reported but not inserted into the active configuration.
+- A malformed UART line is discarded at newline and produces an error event.
+- Buffer overflow discards the current line, reports an error, and resumes at the next newline.
+- Radio initialization or ranging failure leaves the coprocessor responsive to `HELLO`, `STATUS`, and `STOP`.
+- Brownout or reset evidence blocks shared-rail approval until the power design changes.
+
+## Verification strategy
+
+Immediate documentation verification:
+
+- no SVG, generator, SVG test, or links to `docs/wiring/diagrams/` remain;
+- the Stage 1 README embeds or links both raster sources;
+- all internal links pass `scripts/check-wiring-docs.sh`;
+- Stage 1 wording never exceeds the verified three-servo boundary; and
+- no provisional Stage 2 GPIO appears in the authoritative pin map or netlist.
+
+Future firmware verification:
+
+- parser tests are written before robot-host parser implementation;
+- protocol state tests cover stopped/configured/ranging/error transitions;
+- malformed, overlong, stale, and unsupported-version inputs are fail-first tests;
+- Makerfabs radio firmware is tested independently before UART integration; and
+- every hardware gate produces a dated acceptance record with commands, firmware revisions, measurements, and pass/fail results.
+
+## Repository status after immediate documentation work
+
+- Stage 1 is documented by the verified wiring-table screenshot, perfboard layout image, photographs, and explicit evidence boundary.
+- Generated wiring diagrams are absent.
+- Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards are purchased but not yet integrated.
+- Stage 2 has a complete execution sequence, but exact wiring remains intentionally gated on delivered hardware.
