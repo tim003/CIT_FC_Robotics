@@ -80,6 +80,11 @@ if [ -e tests/test_wiring_diagrams.py ]; then
   fail=1
 fi
 
+if rg -q '^```mermaid' docs/wiring/README.md; then
+  echo 'FAIL: unverified wiring Mermaid still exists'
+  fail=1
+fi
+
 for text in \
   '2026-09-07-stage1-verified-wiring-table.png' \
   '20260901_CircuitBoardDesign_002_Fixed.jpg' \
@@ -136,7 +141,7 @@ Do not describe the layout image as proof of hidden underside nets.
 
 - [ ] **Step 5: Replace the active diagram link and delete the generated-diagram system**
 
-In `docs/wiring/README.md`, replace the `diagrams/` document-map row with a row linking to the Stage 1 evidence record at `../../hardware/circuit%20layout/README.md`. Keep its existing tested-build versus production-target table unchanged until Task 2 expands project status.
+In `docs/wiring/README.md`, delete the `## Block diagram` Mermaid section because it still depicts the obsolete bare-radio path. Replace the `diagrams/` document-map row with a row linking to the Stage 1 evidence record at `../../hardware/circuit%20layout/README.md`. Keep its existing tested-build versus production-target table unchanged until Task 2 expands project status.
 
 Then remove the complete generated system:
 
