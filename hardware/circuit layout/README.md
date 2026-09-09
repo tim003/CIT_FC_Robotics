@@ -18,7 +18,7 @@ The colleague-tested connections transcribed from the wiring table are:
 
 | Function | Connection |
 |---|---|
-| Battery input | 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
+| Battery input | 7.4 V 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
 | Main 5 V supply | LM2596S `OUT+`, adjusted to 5.0 V, to ESP32-S3 `5V` and PCA9685 servo `V+` |
 | Main ground | LM2596S `OUT-` to the shared perfboard ground rail and every module ground |
 | I2C data | SSD1306 `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
@@ -27,9 +27,10 @@ The colleague-tested connections transcribed from the wiring table are:
 | Servo signals | MG90S servos 1–3 signal wires to PCA9685 channels 0, 1, and 2 |
 | Servo power | Servos 1–3 red wires to PCA9685 `V+`; brown/black wires to PCA9685 `GND` |
 
-The screenshot's 6.8 V label records the battery condition when captured; the
-source is a nominal 2S 14500 pack, so the image is not a battery specification.
-The colleague-tested LM2596S output is 5.0 V. For new construction, follow the
+The PNG wiring table specifies a 7.4 V battery input. The separate 6.8 V
+captured-condition annotation appears on
+`20260901_CircuitBoardDesign_002_Fixed.jpg`, not on the PNG table; neither image
+is a battery specification. The colleague-tested LM2596S output is 5.0 V. For new construction, follow the
 production power setup and safety procedure in
 [`../../docs/wiring/power.md`](../../docs/wiring/power.md).
 

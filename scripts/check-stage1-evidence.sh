@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT"
+
 fail=0
 IMAGE='hardware/circuit layout/2026-09-07-stage1-verified-wiring-table.png'
 README='hardware/circuit layout/README.md'

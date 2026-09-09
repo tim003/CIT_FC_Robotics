@@ -58,6 +58,10 @@ Create executable `scripts/check-stage1-evidence.sh`:
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT"
+
 fail=0
 IMAGE='hardware/circuit layout/2026-09-07-stage1-verified-wiring-table.png'
 README='hardware/circuit layout/README.md'
@@ -132,7 +136,7 @@ Update `hardware/circuit layout/README.md` to:
 - embed the wiring screenshot with `![Verified Stage 1 wiring table](2026-09-07-stage1-verified-wiring-table.png)`;
 - embed the layout with `![Stage 1 perfboard routing layout](20260901_CircuitBoardDesign_002_Fixed.jpg)`;
 - transcribe the exact wiring table from the design spec;
-- state that the screenshot's 6.8 V label is a captured battery condition, while the source is a nominal 2S 14500 pack;
+- state that the PNG wiring table specifies a 7.4 V battery input, while the 6.8 V captured-condition annotation appears only on `20260901_CircuitBoardDesign_002_Fixed.jpg`;
 - state that the colleague-tested LM2596S output is 5.0 V;
 - preserve the exact verified and unverified boundaries required by the check; and
 - link production construction to `../../docs/wiring/netlist.md`, power safety to `../../docs/wiring/power.md`, and antenna placement to `../../docs/wiring/antenna.md`.

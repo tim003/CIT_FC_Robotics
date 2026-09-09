@@ -21,7 +21,7 @@
 - UART is 115200 baud, 8N1, newline-delimited ASCII, protocol version `V1`.
 - Node IDs are runtime configuration; do not create separate firmware binaries per robot.
 - A range older than three expected update intervals is stale and cannot be consumed as current position data.
-- Pin-map, netlist, power document, BOM, and integration table change together after pins and power are verified.
+- Robot sketch UART constants/integration, pin map, netlist, power document, expansion guide, BOM, audit cross-check, and integration table change together after pins and power are verified.
 - Preserve the optional raw-radio header and its open-drain `RSTn` invariant; it is not the selected Stage 2 route.
 - Do not vendor upstream binaries. Reference Makerfabs repository commit `9d449b8bdb07f464791cf09ec3b36aeb3c4f6595`; keep only this project's modified sources.
 - Complete Gate 1 before Tasks 2–7. Complete each later task in order.
@@ -38,7 +38,7 @@
 
 **Interfaces:**
 - Consumes: both delivered Makerfabs boards, a multimeter, USB power meter or current-capable bench supply, and the matching schematic.
-- Produces: machine-checked `board-audit.json`; later tasks consume its `uart`, `power`, `logic_voltage_v`, `antenna_edge`, and per-board identity fields.
+- Produces: machine-checked `board-audit.json`; later tasks consume its candidate robot UART GPIOs and selection reason, Makerfabs UART labels, `power`, `logic_voltage_v`, `antenna_edge`, and per-board identity fields. Candidate GPIOs recorded here are audit inputs, not authoritative assignments.
 
 - [ ] **Step 1: Write the failing audit validator**
 
@@ -49,7 +49,10 @@ required_top = {
     "audit_date", "product", "upstream_commit", "schematic",
     "logic_voltage_v", "uart", "power", "antenna_edge", "boards"
 }
-required_uart = {"makerfabs_rx_label", "makerfabs_tx_label", "ground_label"}
+required_uart = {
+    "makerfabs_rx_label", "makerfabs_tx_label", "ground_label",
+    "robot_tx_gpio_candidate", "robot_rx_gpio_candidate", "selection_reason"
+}
 required_power = {
     "bench_input", "idle_ma", "ranging_average_ma", "ranging_peak_ma",
     "shared_rail_decision", "decision_reason"
@@ -63,6 +66,8 @@ Additional assertions:
 - `upstream_commit == "9d449b8bdb07f464791cf09ec3b36aeb3c4f6595"`;
 - `logic_voltage_v` is numeric and between 3.0 and 3.6;
 - current values are positive numbers;
+- candidate robot TX/RX GPIOs are distinct integers that the validator cross-checks against the current pin map as available, non-reserved candidates;
+- the candidate selection reason names the pin-map review and why neither candidate conflicts with an existing function;
 - exactly two board objects exist with distinct `unit` values;
 - every referenced photo exists; and
 - no string value is empty or one of `unknown`, `pending`, `unset`, or `not-measured` case-insensitively.
@@ -99,7 +104,7 @@ Compare physical headers and continuity to the Makerfabs schematic. Identify lab
 - every supported external supply input; and
 - UWB antenna edge.
 
-Do not select robot GPIOs yet.
+Then inspect the current `docs/wiring/pin-map.md` and record distinct candidate robot TX and RX GPIO numbers plus a selection reason showing that existing assignments, reserved pins, and forbidden pins were checked. These candidates do not become authoritative in this task: do not edit the pin map, netlist, or robot sketch, and do not wire them into the robot until Task 6 commits the complete integration atomically.
 
 - [ ] **Step 4: Measure electrical characteristics**
 
@@ -114,7 +119,7 @@ Set `shared_rail_decision` to exactly `approved`, `dedicated-regulator`, or `sep
 
 - [ ] **Step 5: Write and validate the audit record**
 
-Create `board-audit.json` with the validated fields and a `README.md` that explains test instruments, measurement method, schematic source, antenna observations, and the power decision.
+Create `board-audit.json` with the validated fields and a `README.md` that explains test instruments, measurement method, schematic source, antenna observations, candidate robot UART GPIO selection, its non-authoritative status, and the power decision.
 
 Run:
 
@@ -218,13 +223,14 @@ git commit -m "Measure Makerfabs stock ranging baseline"
 ```cpp
 enum class UwbMessageType {
   Hello, Configure, Start, Stop, StatusRequest,
-  Ready, Range, Status, Error, Invalid
+  Ready, Ack, Range, Status, Error, Invalid
 };
 
 struct UwbMessage {
   UwbMessageType type;
   uint8_t node;
   uint8_t peer;
+  uint32_t sequence;
   uint32_t distanceMm;
   int32_t quality;
   uint32_t sampleMs;
@@ -247,8 +253,11 @@ V1 CONFIG node=1 peer=2
 V1 START
 V1 STOP
 V1 STATUS
-V1 READY fw=0.1.0 node=1
-V1 RANGE peer=2 mm=1234 quality=-87 sample_ms=42000
+V1 READY fw=0.1.0
+V1 ACK command=CONFIG
+V1 ACK command=START
+V1 ACK command=STOP
+V1 RANGE peer=2 seq=17 mm=1234 quality=-87 sample_ms=42000
 V1 STATUS state=ranging
 V1 ERROR code=bad-command
 ```
@@ -258,7 +267,8 @@ Also assert rejection of:
 ```text
 V2 HELLO
 V1 CONFIG node=1
-V1 RANGE peer=2 mm=-1 quality=0 sample_ms=4
+V1 RANGE peer=2 seq=17 mm=-1 quality=0 sample_ms=4
+V1 ACK command=STATUS
 V1 START extra=yes
 <161 printable characters followed by newline>
 ```
@@ -281,7 +291,7 @@ Run it and expect compilation failure because the protocol files do not exist.
 
 - [ ] **Step 2: Implement the bounded parser and formatter**
 
-Implement the declared API without heap allocation, Arduino `String`, exceptions, or unbounded copies. Parsing must reject unsupported versions, missing keys, duplicate keys, unknown extra keys, negative unsigned values, and overlong lines. On failure set `out->type` to `Invalid` and leave no partial active configuration for callers to apply.
+Implement the declared API without heap allocation, Arduino `String`, exceptions, or unbounded copies. Parsing must reject unsupported versions, missing keys, duplicate keys, unknown extra keys, negative unsigned values, ACK commands other than `CONFIG`, `START`, or `STOP`, and overlong lines. On failure set `out->type` to `Invalid` and leave no partial active configuration for callers to apply.
 
 - [ ] **Step 3: Run tests to GREEN**
 
@@ -308,6 +318,7 @@ git commit -m "Add versioned UWB UART protocol"
 - Create: `firmware/makerfabs-uwb/ds-twr-math.cpp`
 - Create: `firmware/makerfabs-uwb/README.md`
 - Create: `tests/ds-twr-math-test.cpp`
+- Create: `tests/ds-twr-transaction-test.cpp`
 - Modify: `scripts/test-uwb-protocol.sh`
 
 **Interfaces:**
@@ -319,6 +330,15 @@ git commit -m "Add versioned UWB UART protocol"
 Define:
 
 ```cpp
+struct DsTwrTimestamps {
+  uint64_t t1PollTx;
+  uint64_t t2PollRx;
+  uint64_t t3ResponseTx;
+  uint64_t t4ResponseRx;
+  uint64_t t5FinalTx;
+  uint64_t t6FinalRx;
+};
+
 struct DsTwrIntervals {
   uint64_t roundA;
   uint64_t roundB;
@@ -326,11 +346,13 @@ struct DsTwrIntervals {
   uint64_t replyB;
 };
 
+bool dsTwrIntervalsFromTimestamps(
+    const DsTwrTimestamps& timestamps, DsTwrIntervals* out);
 double dsTwrTimeOfFlightDtu(const DsTwrIntervals& intervals);
 uint64_t subtractTimestamp40(uint64_t later, uint64_t earlier);
 ```
 
-Test ordinary and 40-bit-wrap subtraction. Test the DS-TWR equation:
+Use these exact timestamp meanings: `t1 = poll_tx` at the initiator, `t2 = poll_rx` at the responder, `t3 = response_tx` at the responder, `t4 = response_rx` at the initiator, `t5 = final_tx` at the initiator, and `t6 = final_rx` at the responder. Write fail-first tests proving the mapping uses 40-bit subtraction for `roundA = t4 - t1`, `replyA = t3 - t2`, `roundB = t6 - t3`, and `replyB = t5 - t4`, including ordinary and 40-bit-wrap cases. Test the DS-TWR equation:
 
 ```text
 ToF = (roundA * roundB - replyA * replyB) /
@@ -339,34 +361,43 @@ ToF = (roundA * roundB - replyA * replyB) /
 
 Reject a zero denominator and any interval set where the numerator is non-positive.
 
-Run the host test and expect failure because implementation is absent.
+In `tests/ds-twr-transaction-test.cpp`, write fail-first transaction tests that reject a Result with the wrong sequence, wrong initiator address, or wrong responder address; time out when Result is missing; and prove the responder's local RANGE and the initiator's Result-derived local RANGE contain equal sequence, peer-relative distance, and quality values. These tests cover transaction correlation only; do not invent cryptographic authentication.
+
+Run the host tests and expect failure because implementation is absent.
 
 - [ ] **Step 2: Implement and test DS-TWR math**
 
 Use `long double` for intermediate products. Keep conversion from DW3000 device-time units to metres outside this pure function so calibration constants remain board-specific.
 
-Extend `scripts/test-uwb-protocol.sh` to compile/run both test binaries. Expected: both suites pass without warnings.
+Extend `scripts/test-uwb-protocol.sh` to compile/run the protocol, math, and transaction test binaries. Expected: all suites pass without warnings.
 
 - [ ] **Step 3: Implement the radio state machine**
 
 Create one sketch with states:
 
 ```cpp
-enum class RadioState { Stopped, Ready, PollTx, WaitResponse, FinalTx, WaitFinal, Fault };
+enum class RadioState {
+  Stopped, Ready, PollTx, WaitResponse, FinalTx, WaitFinal,
+  ResultTx, WaitResult, Fault
+};
 ```
 
 Rules:
 
-- boot in `Stopped` and respond to `HELLO`/`STATUS`;
-- accept `CONFIG` only in `Stopped`;
+- boot unconfigured in `Stopped`; `HELLO` aborts any transaction, clears configuration, and returns `V1 READY`, which always means unconfigured/rebooted, while `STATUS` remains available;
+- accept `CONFIG` only while stopped (`Stopped` or configured/stopped `Ready`); an accepted `CONFIG`, `START`, or `STOP` emits the corresponding `V1 ACK`;
 - require distinct node and peer IDs in range 1–254;
 - on `START`, lower ID initiates and higher ID responds;
-- exchange Poll, Response, and Final messages carrying node IDs, sequence number, and required timestamps;
-- ignore frames whose node IDs or sequence do not match the active transaction;
-- timeout returns to the appropriate idle role and increments a diagnostic counter;
-- successful initiator calculation emits `V1 RANGE`;
-- `STOP` aborts the transaction and returns to `Stopped`; and
+- every radio frame carries frame type, sequence number, initiator ID, and responder ID, and a frame with any mismatched transaction field is ignored;
+- Poll establishes `t1`/`t2`; Response establishes `t3`/`t4`; Final carries the initiator's 40-bit `t1`, `t4`, and `t5` timestamps so the responder can combine them with local `t2`, `t3`, and `t6`;
+- the responder maps the six timestamps to the four intervals exactly as tested, calculates distance and quality, emits its local sequence-bearing `V1 RANGE`, enters `ResultTx`, and transmits a fourth Result frame containing sequence, initiator ID, responder ID, distance, and quality;
+- after Final transmission the initiator enters `WaitResult`; only a Result matching sequence and both addresses can emit the equivalent local `V1 RANGE`;
+- a missing Result times out without publishing an initiator range, returns to the appropriate idle role, and increments a diagnostic counter;
+- timeouts in all other transaction states likewise return to the appropriate idle role and increment a diagnostic counter;
+- `STOP` aborts the transaction, preserves configuration in `Ready`, and emits its ACK; and
 - radio failure enters `Fault` while UART `HELLO`, `STATUS`, and `STOP` remain responsive.
+
+The sequence and address checks prevent accidental transaction mix-ups; they are not cryptographic authentication.
 
 Adapt the minimum necessary API calls from Makerfabs examples; do not copy the upstream library into this repository.
 
@@ -376,13 +407,13 @@ Compile once for `ESP32 Dev Module`. Flash the same binary to both boards, then 
 
 - [ ] **Step 5: Bench-test DS-TWR before robot integration**
 
-Repeat 0.5 m, 1 m, 2 m, and 5 m tests. Confirm ranges are emitted at least twice per second and that `STOP`, reconfiguration while stopped, invalid reconfiguration while running, timeout, and peer reset behave as specified.
+Repeat 0.5 m, 1 m, 2 m, and 5 m tests. Using two serial captures as robot-host stand-ins, confirm equivalent sequence-bound ranges are emitted at both UART endpoints at least twice per second and that `STOP`, reconfiguration while stopped, invalid reconfiguration while running, wrong-sequence/address frames, missing Result timeout, and peer reset behave as specified.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add firmware/makerfabs-uwb tests/ds-twr-math-test.cpp \
-  scripts/test-uwb-protocol.sh
+  tests/ds-twr-transaction-test.cpp scripts/test-uwb-protocol.sh
 git diff --cached --check
 git commit -m "Implement two-node Makerfabs DS-TWR firmware"
 ```
@@ -393,11 +424,10 @@ git commit -m "Implement two-node Makerfabs DS-TWR firmware"
 - Create: `firmware/sesame-s3-pca9685/uwb-host.h`
 - Create: `firmware/sesame-s3-pca9685/uwb-host.cpp`
 - Create: `tests/uwb-host-test.cpp`
-- Modify: `firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino`
 - Modify: `scripts/test-uwb-protocol.sh`
 
 **Interfaces:**
-- Consumes: `parseUwbLine`, delivered-board UART mapping from Task 1, and `millis()` supplied to host polling.
+- Consumes: `parseUwbLine` and wrap-safe millisecond values supplied to host polling. This task is pin-independent and does not modify the robot sketch.
 - Produces:
 
 ```cpp
@@ -405,10 +435,16 @@ struct RangeState {
   bool available;
   bool stale;
   uint8_t peer;
+  uint32_t sequence;
   uint32_t distanceMm;
   int32_t quality;
   uint32_t sampleMs;
   uint32_t receivedMs;
+};
+
+enum class UwbLinkState {
+  AwaitReady, AwaitConfigAck, Stopped,
+  AwaitStartAck, Ranging, AwaitStopAck
 };
 
 class UwbHost {
@@ -416,100 +452,114 @@ class UwbHost {
   void begin(uint8_t node, uint8_t peer, uint32_t expectedIntervalMs);
   void ingest(char byte, uint32_t nowMs);
   void tick(uint32_t nowMs);
+  bool nextTxLine(char* out, size_t capacity);
+  void requestStart();
+  void requestStop();
+  UwbLinkState linkState() const;
   const RangeState& range() const;
 };
 ```
 
+`nextTxLine` retrieves at most one complete line from a fixed-capacity outbound queue and returns immediately; serial ownership and nonblocking writes remain with the caller.
+
 - [ ] **Step 1: Write fail-first host tests**
 
-Test byte-at-a-time input split at every possible boundary for a valid RANGE line. Test malformed input, 161-byte overflow, unsupported version, unknown peer, makerfabs reboot (`READY`), disconnect with no bytes, reconnect, and `uint32_t` millisecond wrap. Assert:
+Test byte-at-a-time input split at every possible boundary for a valid sequence-bearing RANGE line. Test malformed input, 161-byte overflow, unsupported version, unknown peer, disconnect with no bytes, reconnect, and `uint32_t` millisecond wrap. Assert:
 
+- `begin` sets running as the boot intent, queues `HELLO`, and enters `AwaitReady`;
+- `READY` means unconfigured and causes `CONFIG` to be queued, CONFIG ACK automatically causes `START` to be queued for the boot intent, and START ACK enters `Ranging`;
+- `requestStop` queues `STOP`, STOP ACK enters configured `Stopped`, and `requestStart` can start again without blocking;
+- a command timeout retries only the currently awaited `HELLO`, `CONFIG`, `START`, or `STOP` line, using a fixed retry interval and bounded queue;
+- a `READY` received while ranging clears availability and restarts CONFIG/START handshake;
+- simulated READY-triggered recovery with ACKs restores ranging and equivalent range availability within 5000 ms;
+- `nextTxLine` returns immediately for both empty and non-empty queues and reports insufficient caller capacity without a partial line;
 - valid range becomes available;
 - stale becomes true after more than `3 * expectedIntervalMs`;
-- malformed/overlong input does not replace the last valid range;
-- `READY` clears availability until a new valid range arrives; and
-- no input operation loops or waits for another byte.
+- malformed/overlong input does not replace the last valid range; and
+- no input, tick, control, or transmit-retrieval operation loops or waits for another byte.
 
 Run the test and expect compilation failure before creating `uwb-host.cpp`.
 
-- [ ] **Step 2: Implement the bounded line receiver**
+- [ ] **Step 2: Implement bounded receive, transmit, and recovery state**
 
-Use a fixed 161-byte buffer. Overflow discards through the next newline and increments an error counter. Call the shared parser only on complete lines. Store `receivedMs` separately from radio `sampleMs` for local stale detection.
+Use a fixed 161-byte receive buffer and a fixed-capacity outbound-line queue. Overflow discards through the next newline and increments an error counter. Call the shared parser only on complete lines. Store `receivedMs` separately from radio `sampleMs` for local stale detection.
 
-- [ ] **Step 3: Run host/protocol/math tests**
+Use a fixed retry interval no greater than 500 ms. `begin` sets running as the requested boot intent and queues `HELLO`; `READY` queues `CONFIG`; matching ACKs automatically advance to START and ranging. Retry only the line for the current await state. A `READY` in any later state clears range availability and restarts CONFIG, while preserving the host's requested running/stopped intent. No method writes a serial port or waits for queue space.
 
-Extend `scripts/test-uwb-protocol.sh` to compile the host test with shared sources. Run it and require all three test binaries to pass without warnings.
+- [ ] **Step 3: Run host/protocol/math/transaction tests**
 
-- [ ] **Step 4: Integrate with the robot sketch**
+Extend `scripts/test-uwb-protocol.sh` to compile the host test with shared sources. Run it and require all four test binaries to pass without warnings.
 
-Use the exact UART pins verified in Task 1. Initialize a dedicated `HardwareSerial` at 115200 8N1. In every `loop()` pass:
-
-- consume only currently available bytes;
-- call `tick(millis())`;
-- never wait for a line, response, or range;
-- leave PCA9685/OLED/Wi-Fi scheduling unchanged; and
-- expose current/stale/unavailable range state in diagnostics without treating stale data as position.
-
-- [ ] **Step 5: Compile and commit**
+- [ ] **Step 4: Commit the pin-independent host library**
 
 ```bash
-arduino-cli compile --clean --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
-  firmware/sesame-s3-pca9685
 bash scripts/test-uwb-protocol.sh
-git add firmware/sesame-s3-pca9685 firmware/shared \
+git add firmware/sesame-s3-pca9685/uwb-host.h \
+  firmware/sesame-s3-pca9685/uwb-host.cpp firmware/shared \
   tests/uwb-host-test.cpp scripts/test-uwb-protocol.sh
 git diff --cached --check
-git commit -m "Integrate nonblocking UWB host"
+git commit -m "Add nonblocking UWB host library"
 ```
+
+Do not add `.ino` UART constants or integration in this task; those must land atomically with authoritative GPIO documentation in Task 6.
 
 ### Task 6: Make verified Stage 2 wiring authoritative
 
 **Files:**
+- Modify: `firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino`
 - Modify: `docs/wiring/pin-map.md`
 - Modify: `docs/wiring/netlist.md`
 - Modify: `docs/wiring/power.md`
 - Modify: `docs/wiring/expansion.md`
 - Modify: `hardware/bom.md`
 - Modify: `hardware/uwb/makerfabs/README.md`
+- Modify: `scripts/check-makerfabs-audit.py`
 - Test: `scripts/check-wiring-docs.sh`
 
 **Interfaces:**
-- Consumes: exact delivered-board labels and power decision from `board-audit.json`, plus the robot GPIOs used by Task 5.
-- Produces: one authoritative Stage 2 wiring table consistent with compiled firmware.
+- Consumes: exact delivered-board labels, candidate robot TX/RX GPIOs with selection reason, and power decision from `board-audit.json`, plus Task 5's pin-independent host library.
+- Produces: one authoritative Stage 2 wiring table consistent with compiled firmware. This is the only task that promotes candidate GPIOs to assignments.
 
 - [ ] **Step 1: Add a failing cross-document consistency check**
 
-Extend `scripts/check-makerfabs-audit.py` to read the chosen robot TX/RX GPIO numbers from `board-audit.json` and fail unless both numbers appear in the pin map, netlist, Makerfabs README, and robot firmware constants. Also require the audited `shared_rail_decision` to match the power and BOM wording.
+Extend `scripts/check-makerfabs-audit.py` to read `robot_tx_gpio_candidate` and `robot_rx_gpio_candidate` from `board-audit.json` and fail unless both numbers appear as assignments in the pin map, netlist, Makerfabs README integration table, and robot sketch UART constants. Also require the audited `shared_rail_decision` to match the power, expansion, integration-table, and BOM wording.
 
-Run it and expect FAIL because authoritative documents have not yet been updated.
+Run it and expect FAIL because authoritative documents and `.ino` integration have not yet been updated.
 
-- [ ] **Step 2: Update pins and nets together**
+- [ ] **Step 2: Reconfirm and promote pins and nets together**
 
-Use the exact audited mapping:
+Recheck the audited candidates against the then-current pin map before promotion. Use the exact audited mapping:
 
 - robot TX → Makerfabs RX;
 - robot RX ← Makerfabs TX;
 - robot ground ↔ Makerfabs ground; and
 - the approved audited power route.
 
-Do not reuse a reserved or forbidden GPIO. If the selected GPIO conflicts with another function, stop and revise the pin choice rather than documenting a multiplexed connection.
+Add the exact robot TX/RX constants, dedicated `HardwareSerial` initialization at 115200 8N1, nonblocking receive drain, `tick(millis())`, and bounded `nextTxLine` serial writes to `sesame-s3-pca9685.ino`. Never wait for a line, ACK, transmit capacity, or range; leave PCA9685/OLED/Wi-Fi scheduling unchanged and expose current/stale/unavailable range state without using stale data as position.
 
-- [ ] **Step 3: Update power and BOM**
+Update the `.ino`, pin map, netlist, power document, expansion guide, BOM, audit cross-check, and Makerfabs README integration table as one change. Do not reuse a reserved or forbidden GPIO. If either candidate conflicts with another function, stop and revise the audit candidate and selection reason before changing any authoritative file; never document a multiplexed connection.
 
-Document measured current and the actual decision: shared rail only if approved by audit, otherwise the dedicated regulator or separate-power route. Include conductor gauge, connector identity, and ground relationship based on the built harness.
+- [ ] **Step 3: Update power, expansion, BOM, and integration table**
 
-- [ ] **Step 4: Run checks and commit**
+Document measured current and the actual decision everywhere: shared rail only if approved by audit, otherwise the dedicated regulator or separate-power route. Include conductor gauge, connector identity, and ground relationship based on the built harness. Cross-check every promoted GPIO and the power decision against `board-audit.json`.
+
+- [ ] **Step 4: Run checks and commit atomically**
 
 ```bash
 python3 scripts/check-makerfabs-audit.py
 bash scripts/check-wiring-docs.sh
 arduino-cli compile --clean --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
   firmware/sesame-s3-pca9685
-git add docs/wiring hardware/bom.md hardware/uwb/makerfabs/README.md \
-  scripts/check-makerfabs-audit.py firmware/sesame-s3-pca9685
+bash scripts/test-uwb-protocol.sh
+git add firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino \
+  docs/wiring/pin-map.md docs/wiring/netlist.md docs/wiring/power.md \
+  docs/wiring/expansion.md hardware/bom.md \
+  hardware/uwb/makerfabs/README.md scripts/check-makerfabs-audit.py
 git diff --cached --check
-git commit -m "Document verified Makerfabs Stage 2 wiring"
+git commit -m "Integrate verified Makerfabs Stage 2 wiring"
 ```
+
+Do not split this commit: firmware GPIO constants and every authoritative wiring/power record must agree at its boundary.
 
 ### Task 7: Run complete two-robot acceptance
 
@@ -517,6 +567,7 @@ git commit -m "Document verified Makerfabs Stage 2 wiring"
 - Create: `hardware/uwb/makerfabs/stage2-acceptance.csv`
 - Create: `hardware/uwb/makerfabs/stage2-acceptance.md`
 - Create: `scripts/analyze-stage2-acceptance.py`
+- Create: `tests/analyze-stage2-acceptance-test.py`
 - Modify: `ARCHITECTURE.md`
 - Modify: `AGENTS.md`
 
@@ -529,46 +580,54 @@ git commit -m "Document verified Makerfabs Stage 2 wiring"
 Require CSV columns:
 
 ```text
-run,target_mm,reported_mm,valid,sample_ms,recovery_ms,uart_reconnected,
-servo_active,oled_ok,wifi_ok,supply_min_v,supply_max_v
+event_type,run,unit,host,sequence,target_mm,reported_mm,valid,sample_ms,
+recovery_ms,uart_reconnected,servo_active,oled_ok,wifi_ok,supply_min_v,
+supply_max_v
 ```
+
+Use `unit-1`/`unit-2` for the Makerfabs source and `host-1`/`host-2` for the robot host that recorded the UART event. Range rows use `event_type=range`; two-minute dropout rows use `event_type=stationary`. Recovery and integration rows use the exact required event names below. `sequence` is the UWB transaction sequence, not a CSV row number.
 
 The analyzer must enforce:
 
-- targets 500, 1000, 2000, and 5000 mm;
-- at least 120 samples per target;
-- median absolute error at most 200 mm at every target;
-- at least two valid ranges per second;
-- at least 90 percent valid samples over a two-minute stationary run;
-- all recorded reboot recovery values at most 5000 ms;
-- all UART reconnect, servo, OLED, and Wi-Fi flags true; and
-- supply values within the limits documented in `docs/wiring/power.md`.
+- `range` targets 500, 1000, 2000, and 5000 mm for both `host-1` and `host-2`;
+- at least 120 `range` samples per host at every target;
+- every `(run, target_mm, sequence)` range transaction has exactly one row per host, and both rows have equivalent `valid` and `reported_mm` values;
+- median absolute error at most 200 mm at every target for each host;
+- at least two valid ranges per second for each host;
+- at least 90 percent valid samples for each host over a two-minute stationary run;
+- explicit rows for every required event type: `reboot-unit-1`, `reboot-unit-2`, `uart-tx-disconnect`, `uart-rx-disconnect`, `uwb-loss`, and `coexistence`;
+- both required reboot events have recovery values at most 5000 ms;
+- all applicable UART reconnect, servo, OLED, and Wi-Fi flags are true; and
+- supply values are within the limits documented in `docs/wiring/power.md`.
 
-Run it and expect FAIL because acceptance data does not exist.
+In `tests/analyze-stage2-acceptance-test.py`, generate minimal otherwise-passing fixtures and remove one host's target samples or one required event at a time. Assert each omission fails, then assert the complete fixture passes. Also cover mismatched sequence-bound host values and reboot recovery over 5000 ms.
+
+Run the analyzer against the absent acceptance CSV and the test suite; expect failure before implementation/data exists.
 
 - [ ] **Step 2: Execute stationary accuracy and dropout runs**
 
-Collect antenna-to-antenna measurements at all four target distances, at least 120 samples each, followed by a continuous two-minute run. Do not delete invalid samples from the CSV.
+Collect antenna-to-antenna measurements at all four target distances, at least 120 paired sequence-bound rows for each host at each target, followed by a continuous two-minute run recorded for both hosts. Do not delete invalid samples from the CSV. Preserve both hosts' equivalent local `V1 RANGE` lines for each transaction sequence.
 
 - [ ] **Step 3: Execute recovery tests**
 
-Record separate tests for:
+Record separate rows with these exact `event_type` values:
 
-- reboot of Makerfabs unit 1;
-- reboot of Makerfabs unit 2;
-- UART TX disconnect/reconnect;
-- UART RX disconnect/reconnect; and
-- temporary UWB obstruction/loss.
+- `reboot-unit-1`;
+- `reboot-unit-2`;
+- `uart-tx-disconnect`;
+- `uart-rx-disconnect`; and
+- `uwb-loss`.
 
-Robot movement/OLED tasks must continue; stale data must become unavailable rather than remaining current.
+Identify the affected `unit` and observing `host` on each row. Robot movement/OLED tasks must continue; stale data must become unavailable rather than remaining current. For both reboot events, measure from READY/reboot detection through the repeated CONFIG/START handshake to equivalent range delivery on both hosts; recovery over five seconds fails.
 
 - [ ] **Step 4: Execute coexistence and power tests**
 
-With UWB ranging and Wi-Fi active, operate OLED and the verified three servos. Record rail minimum/maximum and radio behavior. If the eight-servo harness has since passed its separate power gate, repeat with representative eight-servo motion; otherwise state that it remains a separate production acceptance item.
+With UWB ranging and Wi-Fi active, operate OLED and the verified three servos. Record this as an explicit `coexistence` event with unit, host, rail minimum/maximum, and radio behavior. If the eight-servo harness has since passed its separate power gate, repeat with representative eight-servo motion; otherwise state that it remains a separate production acceptance item.
 
 - [ ] **Step 5: Analyze and record the result**
 
 ```bash
+python3 tests/analyze-stage2-acceptance-test.py
 python3 scripts/analyze-stage2-acceptance.py \
   hardware/uwb/makerfabs/stage2-acceptance.csv
 ```
@@ -581,7 +640,8 @@ Update `ARCHITECTURE.md` and `AGENTS.md` with the measured result. Do not claim 
 
 ```bash
 git add hardware/uwb/makerfabs/stage2-acceptance.* \
-  scripts/analyze-stage2-acceptance.py ARCHITECTURE.md AGENTS.md
+  scripts/analyze-stage2-acceptance.py tests/analyze-stage2-acceptance-test.py \
+  ARCHITECTURE.md AGENTS.md
 git diff --cached --check
 git commit -m "Record two-robot UWB acceptance"
 ```
@@ -615,6 +675,7 @@ Record that two-node integration is accepted and that four-node work still requi
 bash scripts/test-uwb-protocol.sh
 python3 scripts/check-makerfabs-audit.py
 python3 scripts/analyze-makerfabs-baseline.py hardware/uwb/makerfabs/baseline.csv
+python3 tests/analyze-stage2-acceptance-test.py
 python3 scripts/analyze-stage2-acceptance.py \
   hardware/uwb/makerfabs/stage2-acceptance.csv
 bash scripts/check-wiring-docs.sh
@@ -627,8 +688,8 @@ Expected: all applicable checks pass and the working tree is clean.
 ## Self-review
 
 - Tasks follow all six hardware/firmware gates from the approved design.
-- Delivered-board facts are captured before pins or power enter authoritative documents.
-- The UART protocol has exact syntax, bounded APIs, fail-first tests, and explicit failure behavior.
-- DS-TWR math and robot-host parsing are independently host-testable.
-- Acceptance thresholds exactly match the design: 0.20 m median absolute error, two valid ranges per second, under 10 percent invalid samples, and five-second reboot recovery.
+- Delivered-board facts and candidate GPIOs are captured before pins or power enter authoritative documents; `.ino` integration and all affected records commit together.
+- The UART protocol has exact syntax, ACKs, bounded receive/transmit APIs, retry/recovery state, fail-first tests, and explicit failure behavior.
+- DS-TWR timestamp mapping, Result correlation, math, and robot-host parsing are independently host-testable.
+- Acceptance requires paired equal host values and all named event cases while retaining the design thresholds: 0.20 m median absolute error, two valid ranges per second, under 10 percent invalid samples, and five-second reboot recovery.
 - Four-robot TDMA is explicitly outside Stage 2 and starts only after a measured PASS.

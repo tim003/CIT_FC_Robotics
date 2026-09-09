@@ -34,7 +34,7 @@ The table records the colleague-tested Stage 1 connections:
 
 | Function | Connection |
 |---|---|
-| Battery input | 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
+| Battery input | 7.4 V 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
 | Main 5 V supply | LM2596S `OUT+`, adjusted to 5.0 V, to ESP32-S3 `5V` and PCA9685 servo `V+` |
 | Main ground | LM2596S `OUT-` to the shared perfboard ground rail and every module ground |
 | I2C data | SSD1306 `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
@@ -43,7 +43,7 @@ The table records the colleague-tested Stage 1 connections:
 | Servo signals | MG90S servos 1–3 signal wires to PCA9685 channels 0, 1, and 2 |
 | Servo power | Servos 1–3 red wires to PCA9685 `V+`; brown/black wires to PCA9685 `GND` |
 
-The photographed source labels the battery-side voltage as 6.8 V at the captured condition. The build uses a nominal 2S 14500 pack; the image is not a battery specification.
+The PNG wiring table specifies a 7.4 V battery input. The separate 6.8 V captured-condition annotation appears on `20260901_CircuitBoardDesign_002_Fixed.jpg`, not on the PNG table; neither image is a battery specification.
 
 ### Perfboard layout
 
@@ -140,8 +140,11 @@ V1 STATUS
 Coprocessor events:
 
 ```text
-V1 READY fw=<version> node=<node-id>
-V1 RANGE peer=<peer-id> mm=<distance> quality=<driver-value> sample_ms=<timestamp>
+V1 READY fw=<version>
+V1 ACK command=CONFIG
+V1 ACK command=START
+V1 ACK command=STOP
+V1 RANGE peer=<peer-id> seq=<sequence> mm=<distance> quality=<driver-value> sample_ms=<timestamp>
 V1 STATUS state=<state>
 V1 ERROR code=<code>
 ```
@@ -149,8 +152,13 @@ V1 ERROR code=<code>
 Requirements:
 
 - node IDs are runtime configuration, not separate firmware binaries;
-- `CONFIG` is accepted only while stopped;
-- malformed lines, unknown commands, and unsupported protocol versions return `V1 ERROR` and do not change the active configuration;
+- `READY` means the coprocessor is unconfigured, including after a reboot; receiving `HELLO` aborts any transaction, clears configuration, and emits `READY`;
+- `CONFIG` is accepted only while stopped, and each accepted `CONFIG`, `START`, or `STOP` produces the matching `V1 ACK command=CONFIG|START|STOP` event;
+- robot-host boot and recovery use the same handshake: send `HELLO`, wait for `READY`, send `CONFIG`, wait for its ACK, send `START`, and wait for its ACK;
+- a command timeout retries the command currently awaiting acknowledgement; a `READY` received while ranging immediately clears range availability and restarts the handshake;
+- host parsing, retry timing, and bounded outbound-line retrieval cannot block robot control or require a blocking serial write;
+- malformed lines, unknown commands, unsupported protocol versions, and ACKs for commands not currently awaited return or are treated as errors without changing active configuration;
+- every `RANGE` includes the UWB transaction sequence so the two robot hosts can correlate equivalent results;
 - a range older than three expected update intervals is stale and cannot be consumed as current position data;
 - line parsing is bounded and cannot block robot control; and
 - the raw quality field is documented after the selected DW3000 driver establishes its meaning.
@@ -170,7 +178,7 @@ Bench integration order:
 5. compare the result with the existing eight-servo power budget; and
 6. choose either the existing 5 V rail, a dedicated regulator, or continued separate power based on measured headroom.
 
-If a shared supply is selected, the pin map, netlist, power document, BOM, and Stage 2 wiring table change together.
+After the audit selects candidate UART GPIOs and a power route, the robot sketch constants/integration, pin map, netlist, power document, expansion guide, BOM, audit cross-check, and Stage 2 integration table change together when Task 6 promotes those candidates to authoritative assignments.
 
 The ESP32-S3 Wi-Fi antenna and Makerfabs UWB antenna each require clear placement. Final spacing and orientation are established by coexistence tests, not product photographs.
 
@@ -184,8 +192,11 @@ For both boards:
 - record board revision, module markings, and WROOM identity;
 - match the delivered headers to the correct schematic;
 - identify UART, ground, reset, and supported power inputs;
-- verify logic voltage; and
-- identify the UWB antenna edge and required keep-out.
+- verify logic voltage;
+- identify the UWB antenna edge and required keep-out; and
+- after reviewing the current pin map, record candidate robot TX/RX GPIOs and the reason they do not conflict with assigned, reserved, or forbidden pins.
+
+The arrival audit records candidates only. It does not edit the authoritative pin map, netlist, or robot sketch, and no GPIO value may be selected before the boards arrive.
 
 ### Gate 2 — unmodified standalone baseline
 
@@ -203,11 +214,22 @@ This gate proves the purchased hardware and local toolchain before custom firmwa
 
 Implement deterministic two-node dual-sided two-way ranging on the Makerfabs boards. Configure node identities at runtime. Keep all radio timing local to the Makerfabs ESP32 and expose only the approved UART contract.
 
+For each sequence, define the six 40-bit DW3000 timestamps exactly as follows:
+
+- `t1 = poll_tx` at the initiator;
+- `t2 = poll_rx` at the responder;
+- `t3 = response_tx` at the responder;
+- `t4 = response_rx` at the initiator;
+- `t5 = final_tx` at the initiator; and
+- `t6 = final_rx` at the responder.
+
+Use wrap-safe 40-bit subtraction to map `roundA = t4 - t1`, `replyA = t3 - t2`, `roundB = t6 - t3`, and `replyB = t5 - t4`. Poll and Response establish the sequence and addressed initiator/responder pair. Final carries `t1`, `t4`, and `t5`; the responder combines them with local `t2`, `t3`, and `t6`, calculates the range and quality, emits its local sequence-bearing `V1 RANGE`, then sends a fourth Result frame containing the same range and quality. Result carries the same sequence, initiator address, and responder address. The initiator validates all three fields before emitting an equivalent local `V1 RANGE`; a wrong-address, wrong-sequence, or missing Result cannot publish a range. This is transaction correlation and addressing, not cryptographic authentication.
+
 ### Gate 4 — robot-host integration
 
-Implement a bounded UART parser and range-state record on the ESP32-S3. Verify start, stop, status, malformed input, disconnect/reconnect, stale-range expiry, and Makerfabs reboot while PCA9685 and OLED tasks continue operating.
+Implement a bounded UART parser, bounded outbound command queue, explicit link state, retry timer, and range-state record on the ESP32-S3. Verify the HELLO/READY/CONFIG-ACK/START-ACK boot sequence, start, stop, status, malformed input, disconnect/reconnect, stale-range expiry, and Makerfabs reboot while PCA9685 and OLED tasks continue operating. Recovery to equivalent range delivery on both hosts within five seconds must be testable without blocking reads or writes.
 
-After delivered-board inspection selects pins, update `docs/wiring/pin-map.md`, `docs/wiring/netlist.md`, `docs/wiring/power.md`, and the integration table in one commit.
+After delivered-board inspection selects pins, update the robot sketch's UART constants and integration, `docs/wiring/pin-map.md`, `docs/wiring/netlist.md`, `docs/wiring/power.md`, `docs/wiring/expansion.md`, the BOM, the arrival-audit cross-check, and the integration table in one commit.
 
 ### Gate 5 — complete two-robot acceptance
 
@@ -221,6 +243,8 @@ The two complete robot/controller pairs pass when:
 - OLED and three-servo operation continue during ranging;
 - Wi-Fi remains usable with both radio systems active; and
 - measured supply voltage remains within the documented rail limits during representative servo motion.
+
+Acceptance evidence uses CSV columns for `event_type`, `unit`, and `host`, as well as the transaction sequence for range rows. Every target must contain at least 120 range samples delivered to each robot host, and the analyzer must reject any sequence whose two host rows do not carry equivalent range values. It must also reject a data set unless it contains explicit `reboot-unit-1`, `reboot-unit-2`, `uart-tx-disconnect`, `uart-rx-disconnect`, `uwb-loss`, and `coexistence` events. These completeness checks are in addition to, not replacements for, every numeric and boolean threshold above.
 
 The all-eight-servo test remains a separate production-power acceptance gate if the full harness is not yet available.
 
@@ -251,8 +275,11 @@ Immediate documentation verification:
 Future firmware verification:
 
 - parser tests are written before robot-host parser implementation;
-- protocol state tests cover stopped/configured/ranging/error transitions;
-- malformed, overlong, stale, and unsupported-version inputs are fail-first tests;
+- protocol state tests cover stopped/configured/ranging/error transitions, command ACKs, timeout retries, and READY-triggered recovery;
+- malformed, overlong, stale, unsupported-version, wrong-sequence, wrong-address, and missing-Result inputs are fail-first tests;
+- timestamp tests prove the six-timestamp interval mapping and wrap-safe subtraction;
+- transaction tests prove equivalent sequence-bound range values reach both robot hosts;
+- acceptance-analyzer tests prove that each required event and either host's samples cannot be omitted;
 - Makerfabs radio firmware is tested independently before UART integration; and
 - every hardware gate produces a dated acceptance record with commands, firmware revisions, measurements, and pass/fail results.
 
