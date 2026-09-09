@@ -17,6 +17,13 @@ Moving PWM generation onto a PCA9685 frees the MCU's timers entirely, keeps
 servo current on its own supply, and leaves GPIOs available for the UWB header
 and extra actuators.
 
+## Stage status
+
+| Record | Status |
+|---|---|
+| Stage 1 [as-built perfboard](../../hardware/circuit%20layout/README.md) | Power, GPIO2/GPIO3 I2C, and three servos verified; Wi-Fi placement and eight-servo load not verified |
+| [Production target](netlist.md) | Netlist complete; full harness and eight-servo acceptance still pending |
+
 ## Block diagram
 
 ```mermaid

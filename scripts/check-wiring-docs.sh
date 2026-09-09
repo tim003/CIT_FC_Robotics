@@ -78,7 +78,8 @@ for f in $DOCS; do
   for l in $(grep -oE '\]\([^)#]+' "$f" 2>/dev/null | sed -E 's/^\]\(//'); do
     [ -z "$l" ] && continue
     case "$l" in http:*|https:*|mailto:*) continue;; esac
-    [ -e "$d/$l" ] || [ -e "$l" ] || err "$f: dead link -> $l"
+    fs_l=${l//%20/ }
+    [ -e "$d/$fs_l" ] || [ -e "$fs_l" ] || err "$f: dead link -> $l"
   done
 done
 done_ok "internal links resolve"
