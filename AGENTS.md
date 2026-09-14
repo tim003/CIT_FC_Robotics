@@ -25,11 +25,14 @@ wiring, with pins reserved for UWB positioning and extra actuators.
 Current phase: the **Stage 1 evidence is recorded** and the production harness
 is not accepted. The [colleague-built perfboard
 record](hardware/circuit%20layout/README.md) verifies power-up, I2C on
-GPIO2/GPIO3, and movement of three servos. All-eight-servo operation, complete
-animation, and Wi-Fi in the photographed stacked assembly remain unverified.
-Generated wiring diagrams were retired because they were not confirmed build
-evidence; use the raster evidence record for the tested assembly and the
-netlist for new construction.
+GPIO2/GPIO3, and movement of three servos. The user's 2026-09-14 assembled-robot
+run of [`firmware/test/robotics_esp32s3/`](firmware/test/robotics_esp32s3/)
+verified all eight physical PCA9685 channel-to-joint identities with the
+diagnostic sketch. The production sketch has not been uploaded; boot safety,
+complete production animation, and Wi-Fi in the photographed stacked assembly
+remain unverified. Generated wiring diagrams were retired because they were
+not confirmed build evidence; use the raster evidence record for the tested
+assembly and the netlist for new construction.
 
 Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
 2026-09-09 but have not arrived or been integrated. The selected Stage 2 route
