@@ -49,18 +49,32 @@ current out of the ESP32.
 
 | # | From | To | Gauge | Notes |
 |---|---|---|---|---|
-| 19 | PCA9685 `ch0` signal | Servo — upstream `servoPins[0]`, leg 1 | 30AWG | |
-| 20 | PCA9685 `ch1` signal | Servo — upstream `servoPins[1]`, leg 2 | 30AWG | |
-| 21 | PCA9685 `ch2` signal | Servo — upstream `servoPins[2]`, leg 4 | 30AWG | |
-| 22 | PCA9685 `ch3` signal | Servo — upstream `servoPins[3]`, leg 6 | 30AWG | |
-| 23 | PCA9685 `ch4` signal | Servo — upstream `servoPins[4]`, leg 8 | 30AWG | |
-| 24 | PCA9685 `ch5` signal | Servo — upstream `servoPins[5]`, leg 10 | 30AWG | |
-| 25 | PCA9685 `ch6` signal | Servo — upstream `servoPins[6]`, leg 13 | 30AWG | |
-| 26 | PCA9685 `ch7` signal | Servo — upstream `servoPins[7]`, leg 14 | 30AWG | |
+| 19 | PCA9685 `ch0` signal | ULF — Upper Left Front; upstream L1 / servoPins[2] | 30AWG | |
+| 20 | PCA9685 `ch1` signal | ULB — Upper Left Back; upstream L2 / servoPins[3] | 30AWG | |
+| 21 | PCA9685 `ch2` signal | LLF — Lower Left Front; upstream L3 / servoPins[6] | 30AWG | |
+| 22 | PCA9685 `ch3` signal | LLB — Lower Left Back; upstream L4 / servoPins[7] | 30AWG | |
+| 23 | PCA9685 `ch4` signal | URF — Upper Right Front; upstream R1 / servoPins[0] | 30AWG | |
+| 24 | PCA9685 `ch5` signal | URB — Upper Right Back; upstream R2 / servoPins[1] | 30AWG | |
+| 25 | PCA9685 `ch6` signal | LRF — Lower Right Front; upstream R3 / servoPins[5] | 30AWG | |
+| 26 | PCA9685 `ch7` signal | LRB — Lower Right Back; upstream R4 / servoPins[4] | 30AWG | |
 
-**Channel index must equal the upstream `servoPins[8]` index.** Upstream's
-array is `{1, 2, 4, 6, 8, 10, 13, 14}`. Preserving this ordering is what keeps
-existing animations and Sesame Studio working unchanged — see
+Physical channel order does **not** match upstream logical indexing.
+The verified translation at the PCA9685 boundary is:
+
+| PCA ch | Physical joint | Upstream name | Upstream index | `servoPins[]` |
+|---|---|---|---|---|
+| ch0 | ULF | L1 | idx 2 | `servoPins[2]` |
+| ch1 | ULB | L2 | idx 3 | `servoPins[3]` |
+| ch2 | LLF | L3 | idx 6 | `servoPins[6]` |
+| ch3 | LLB | L4 | idx 7 | `servoPins[7]` |
+| ch4 | URF | R1 | idx 0 | `servoPins[0]` |
+| ch5 | URB | R2 | idx 1 | `servoPins[1]` |
+| ch6 | LRF | R3 | idx 5 | `servoPins[5]` |
+| ch7 | LRB | R4 | idx 4 | `servoPins[4]` |
+
+Logical-to-PCA index array: `{4, 5, 0, 1, 7, 6, 2, 3}`. The firmware applies
+this translation at the hardware boundary so that animation data and APIs
+continue using the upstream logical indices unchanged. See
 [../upstream/divergence.md](../upstream/divergence.md).
 
 ## UWB header — unpopulated
@@ -88,7 +102,7 @@ header.
 
 ## Invariants this netlist encodes
 
-Three things here are load-bearing. Changing any of them destroys hardware or
+Four things here are load-bearing. Changing any of them destroys hardware or
 silently breaks the animation format.
 
 1. **Servo current never flows through the ESP32.** Row 9 draws the MCU's 5 V
@@ -98,3 +112,7 @@ silently breaks the animation format.
    different supplies on the same board. Wiring 5 V into `VCC` destroys it.
 3. **`RSTn` (row 32) is open-drain.** Driving it high fights the module's
    internal pull-up.
+4. **Physical channel index does not equal upstream logical index.** The
+   translation `{4,5,0,1,7,6,2,3}` (PCA channel per logical index) must be
+   applied at the hardware boundary. Assuming identity silently breaks every
+   animation.

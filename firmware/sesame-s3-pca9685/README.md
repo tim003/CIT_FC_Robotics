@@ -26,8 +26,33 @@ substantive edits**, exactly the blast radius predicted in
 
 Everything else — the face engine, `movement-sequences.h`, the JSON API, the
 captive portal, Sesame Studio compatibility — is byte-identical to upstream.
-That portability is the whole point of keeping PCA9685 channel `n` bound to
-upstream's `servoPins[n]`.
+Portability is preserved by applying an explicit channel translation at the
+hardware boundary, not by assuming physical channel `n` equals logical index `n`.
+
+## Logical-to-physical channel translation
+
+Physical PCA9685 channel order does not match upstream logical index order.
+The firmware translates at the hardware boundary using:
+
+```c
+// servosLogicalToPCA[logical_index] = PCA9685_channel
+const uint8_t servosLogicalToPCA[8] = {4, 5, 0, 1, 7, 6, 2, 3};
+```
+
+| Logical index | Upstream name | PCA9685 ch | Physical joint |
+|---|---|---|---|
+| 0 | R1 | ch4 | URF — Upper Right Front |
+| 1 | R2 | ch5 | URB — Upper Right Back |
+| 2 | L1 | ch0 | ULF — Upper Left Front |
+| 3 | L2 | ch1 | ULB — Upper Left Back |
+| 4 | R4 | ch7 | LRB — Lower Right Back |
+| 5 | R3 | ch6 | LRF — Lower Right Front |
+| 6 | L3 | ch2 | LLF — Lower Left Front |
+| 7 | L4 | ch3 | LLB — Lower Left Back |
+
+Subtrim values are indexed by **logical** index (upstream convention), not by
+physical PCA9685 channel. Any per-servo trim array must follow the same
+logical ordering.
 
 ## Pulse geometry — read before changing `SERVOMAX`
 
@@ -136,12 +161,14 @@ The three that destroy hardware:
 3. **Servo current must not flow through the ESP32** — servo power comes off
    the PCA9685's own 3-pin headers.
 
-On boot the sketch drives `OE` HIGH (outputs disabled) before touching I2C,
-and releases it LOW only after the PWM frequency is programmed. Servos stay
+On boot the sketch drives `OE` HIGH (outputs disabled) before touching I2C.
+All sixteen PCA9685 channels are set to full-off before `OE` is released, so
+no stale PWM state survives a warm restart. `OE` is released LOW only after
+the PWM frequency is programmed and all channels are cleared. Servos stay
 limp until the first command, same as upstream.
 
-If the PCA9685 does not answer at `0x40`, the serial log says so at 115200
-baud rather than failing silently.
+If the PCA9685 does not answer at its I2C address, the serial log says so at
+115200 baud rather than failing silently (fail-closed probe).
 
 One more that destroys nothing but costs a day: **seat the board so its
 antenna end overhangs the breadboard**, clear of the metal strips — see
@@ -187,10 +214,27 @@ of this sketch.
 
 ## Not implemented
 
-The UWB header is **reserved, not populated**. The sketch defines the pin
-numbers (netlist rows 27–34) and deliberately never calls `pinMode()` on them,
-so they stay high-Z — an unpopulated header should not be driven.
+**UWB runtime is absent from this sketch.** The SPI-based raw UWB radio
+header (netlist rows 27–34) is reserved and unpopulated. The sketch defines
+the pin numbers and deliberately never calls `pinMode()` on them, so they stay
+high-Z. Stage 2 owns future UWB integration; the selected route is Makerfabs
+ESP32 UWB DW3000 over UART, not SPI.
 
 `RSTn` (GPIO21) is **open-drain**: pull low to reset, release to high-Z, never
 drive high. See [`docs/wiring/expansion.md`](../../docs/wiring/expansion.md)
 before fitting a module.
+
+## Staged acceptance sequence
+
+After a complete assembly, verify movement in this order:
+
+1. **Rest** — all servos at 0°; robot lies flat.
+2. **Stand** — all servos at 90°; robot stands upright. Verify no binding.
+3. **Wave** — one front leg cycles; verify range of motion.
+4. **Walk (raised)** — full gait cycle with robot lifted clear of the floor;
+   verify all eight servos move in the correct sequence.
+5. **Stop** — return to Stand; power down.
+
+Do not run Walk on a surface until all servos pass the raised-walk test.
+Complete production animation and loaded floor operation remain Stage 1
+pending items.

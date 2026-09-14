@@ -43,9 +43,31 @@ transmitting and being heard back. Prefer a phone hotspot over an office
 network — it rules out enterprise authentication, MAC filtering and a wrong
 password in one move.
 
-### `robotics_esp32s3.ino`
-The original three-servo bring-up sketch: PCA9685 plus display, no Wi-Fi.
-Kept because it is the smallest thing that proves the I2C side of the build.
+### `robotics_esp32s3/robotics_esp32s3.ino`
+Eight-servo PCA9685 mapping test plus OLED display, with no Wi-Fi. It uses the
+production pulse limits and tests one channel at a time at 0°, 90°, and 180°,
+returns it to 90°, then releases its PWM output before advancing.
+
+| PCA9685 pin | Physical joint | Upstream name | PCA9685 pin | Physical joint | Upstream name |
+|---:|---|---|---:|---|---|
+| 0 | ULF — Upper Left Front | L1 | 4 | URF — Upper Right Front | R1 |
+| 1 | ULB — Upper Left Back | L2 | 5 | URB — Upper Right Back | R2 |
+| 2 | LLF — Lower Left Front | L3 | 6 | LRF — Lower Right Front | R3 |
+| 3 | LLB — Lower Left Back | L4 | 7 | LRB — Lower Right Back | R4 |
+
+The OLED shows these pin numbers, abbreviations, and last commanded angles in
+two columns. A leading `*` marks the currently energized servo. The displayed
+angles are commands, not measurements; MG90S servos provide no position
+feedback in this build.
+
+> **Physical test order differs from production logical order.** This sketch
+> exercises channels 0–7 in physical PCA9685 sequence. The production firmware
+> uses logical indices 0–7 (R1, R2, L1, L2, R4, R3, L3, L4) and applies the
+> translation `{4,5,0,1,7,6,2,3}` to reach the physical channels. Upstream
+> build-guide procedure: fit servo horns while the motors hold Stand position,
+> then alternate Rest/Stand several times before fastening the horns, and again
+> before running Wave. This catches bind and polarity errors before the robot
+> is fully assembled.
 
 ## Building
 
@@ -58,7 +80,25 @@ arduino-cli compile --clean --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
 arduino-cli monitor -p /dev/cu.usbmodem101 -c baudrate=115200
 ```
 
+For the servo mapping test, `<sketch>` is `robotics_esp32s3`:
+
+```sh
+arduino-cli compile --clean --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+  firmware/test/robotics_esp32s3
+```
+
 Find the port with `arduino-cli board list`.
+
+The host-side mapping and OLED-format regression test does not require Arduino
+libraries:
+
+```sh
+c++ -std=c++17 -Wall -Wextra -Werror \
+  -Ifirmware/test/robotics_esp32s3 \
+  tests/robotics_esp32s3_servo_map_test.cpp \
+  -o /tmp/robotics_esp32s3_servo_map_test
+/tmp/robotics_esp32s3_servo_map_test
+```
 
 Two traps worth knowing, both of which cost time here:
 

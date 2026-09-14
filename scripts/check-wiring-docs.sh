@@ -115,6 +115,30 @@ if [ -f docs/wiring/netlist.md ]; then
   fi
 fi
 
+# 9. Physical servo channels must map to the verified upstream logical identities.
+if [ -f docs/wiring/netlist.md ]; then
+  required_servo_rows=(
+    'ch0|ULF|L1|servoPins[2]'
+    'ch1|ULB|L2|servoPins[3]'
+    'ch2|LLF|L3|servoPins[6]'
+    'ch3|LLB|L4|servoPins[7]'
+    'ch4|URF|R1|servoPins[0]'
+    'ch5|URB|R2|servoPins[1]'
+    'ch6|LRF|R3|servoPins[5]'
+    'ch7|LRB|R4|servoPins[4]'
+  )
+  mark
+  for row in "${required_servo_rows[@]}"; do
+    IFS='|' read -r channel physical logical upstream <<< "$row"
+    line=$(grep -F "PCA9685 \`$channel\` signal" docs/wiring/netlist.md || true)
+    [ -n "$line" ] || { err "missing servo row for $channel"; continue; }
+    [[ "$line" == *"$physical"* ]] || err "$channel missing physical label $physical"
+    [[ "$line" == *"$logical"* ]] || err "$channel missing logical joint $logical"
+    [[ "$line" == *"$upstream"* ]] || err "$channel missing $upstream"
+  done
+  done_ok "physical servo channels map to upstream logical identities"
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "consistency checks FAILED" >&2
   exit 1

@@ -50,8 +50,11 @@ Violating any of these is a bug, not a style choice.
    high.** True of both DWM1000 and DWM3000; driving it high damages the module.
 4. **The LM2596S is adjusted to ~5.2V before any load is connected.** These
    modules ship at arbitrary output voltages.
-5. **Servo channel *order* matches upstream's `servoPins[8]` indexing.** This is
-   what keeps existing animations and Sesame Studio working.
+5. **Upstream logical servo identity is preserved through an explicit
+   translation.** Movement data and APIs use R1, R2, L1, L2, R4, R3, L3, L4 at
+   logical indices 0–7; the verified PCA9685 channels are 4, 5, 0, 1, 7, 6, 2, 3
+   respectively. Logical index must never again be assumed to equal physical
+   channel.
 6. **The netlist is the source of truth.** Evidence records describe tested
    assemblies; the netlist is what you wire from and what gets reviewed.
 
@@ -70,11 +73,12 @@ Violating any of these is a bug, not a style choice.
 
 ## Roadmap
 
-**Stage 1 — evidence recorded, production acceptance incomplete.** The
+**Stage 1 — all eight physical PCA9685 channels and OLED labels verified
+2026-09-14; production acceptance incomplete.** The
 [colleague-built perfboard evidence](hardware/circuit%20layout/README.md)
-verifies power-up, I2C on GPIO2/GPIO3, and movement of three servos. It does not
-verify all-eight-servo operation, complete animation, or Wi-Fi in the
-photographed stacked placement. The production netlist, pin map, power design,
+verifies power-up, I2C on GPIO2/GPIO3, and all eight physical servo channels
+with correct OLED labelling. Complete production animation and loaded floor
+operation remain pending. The production netlist, pin map, power design,
 expansion notes, and assembly guide remain under
 [`docs/wiring/`](docs/wiring/README.md), with the BOM delta in
 [`hardware/bom.md`](hardware/bom.md). The generated wiring diagrams were
@@ -84,9 +88,10 @@ by `scripts/check-wiring-docs.sh`.
 
 The PCA9685 firmware port in
 [`firmware/sesame-s3-pca9685/`](firmware/sesame-s3-pca9685/README.md) compiles,
-boots on a real ESP32-S3 Super Mini, renders the display, and has moved those
-three servos. Animation data is untouched, but complete animation remains
-unverified. Blast radius and pulse-width arithmetic are recorded in
+boots on a real ESP32-S3 Super Mini, renders the display, and has exercised all
+eight servo channels. The physical-to-logical translation is verified and
+committed. Animation data is untouched, but complete production animation and
+loaded floor operation remain unverified. Blast radius and pulse-width arithmetic are recorded in
 [`docs/upstream/divergence.md`](docs/upstream/divergence.md). Bring-up sketches
 and the board acceptance test live in [`firmware/test/`](firmware/test/README.md).
 

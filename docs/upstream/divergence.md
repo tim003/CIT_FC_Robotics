@@ -21,13 +21,14 @@ built as a byte-identical copy of upstream's sketch with six surgical edits —
 166 changed lines total. Everything below was the predicted blast radius, and
 nothing outside it moved.
 
-**Status: Stage 1 is partially verified on hardware.** It builds clean for
+**Status: Stage 1 — all eight physical servo channels verified 2026-09-14;
+production animation acceptance open.** It builds clean for
 `esp32:esp32:esp32s3` (core 3.3.11, Adafruit PWM Servo Driver 3.0.3) at 84 % of
 program storage, and the pulse geometry below is verified arithmetically. The
 [colleague-built perfboard evidence](../../hardware/circuit%20layout/README.md)
-verifies power-up, I2C on GPIO2/GPIO3, and movement of three servos. It does not
-verify all-eight-servo operation, complete animation, or Wi-Fi in the
-photographed stacked assembly. Generated wiring diagrams were retired because
+verifies power-up, I2C on GPIO2/GPIO3, and all eight physical PCA9685 channels
+with correct OLED labelling. Complete production animation and loaded floor
+operation remain pending. Generated wiring diagrams were retired because
 they were not confirmed build evidence.
 
 Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
@@ -50,7 +51,6 @@ open-drain: drive low or leave floating, never drive high.
 | `ESP32PWM::allocateTimer()` × 4 | Removed. PWM generation no longer happens on the MCU, so the timers are not needed |
 | `#include <ESP32Servo.h>` | Replaced by `Adafruit_PWMServoDriver.h`. `ESP32Servo` is no longer a dependency |
 | — *(new)* | PCA9685 `OE` on GPIO18, held HIGH through boot and released only after the PWM frequency is programmed |
-| — *(new)* | UWB pin reservations, netlist rows 27–34. `#define`s only — `pinMode()` is deliberately never called, so an unpopulated header is never driven |
 
 ### The pulse-width bounds
 
@@ -114,16 +114,20 @@ happy accident:
 - the JSON API
 - Sesame Studio compatibility
 
-**All of this works because PCA9685 channel ordering preserves upstream's
-`servoPins[8]` indexing.** Channel *n* drives the leg that upstream's
-`servoPins[n]` drove. Animation data is authored against those indices, so
-existing sequences and anything produced by Sesame Studio keep working with no
-translation layer.
+All of this works because the firmware applies an explicit channel translation
+at the PCA9685 hardware boundary, so animation data and upstream APIs continue
+using the upstream logical indices unchanged. The upstream headers are
+unmodified.
 
-That constraint is recorded in the [netlist](../wiring/netlist.md), rows
-19–26. Reordering the servo channels to tidy the harness would silently break
-every existing animation — the wiring would be fine and the robot would move
-wrongly.
+The physical wiring does **not** preserve the same-index assumption that was
+recorded in earlier documentation. The verified translation is
+`{4,5,0,1,7,6,2,3}`: logical index `i` maps to PCA9685 channel
+`servosLogicalToPCA[i]`. Assuming identity between logical index and physical
+channel silently breaks every animation — the wiring is fine and the robot
+moves wrongly.
+
+The full physical-to-logical table and the translation invariant are recorded
+in the [netlist](../wiring/netlist.md), rows 19–26 and the invariants section.
 
 ## Hardware divergence
 
