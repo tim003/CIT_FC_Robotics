@@ -122,9 +122,10 @@ unmodified.
 The physical wiring does **not** preserve the same-index assumption that was
 recorded in earlier documentation. The verified translation is
 `{4,5,0,1,7,6,2,3}`: logical index `i` maps to PCA9685 channel
-`servosLogicalToPCA[i]`. Assuming identity between logical index and physical
-channel silently breaks every animation — the wiring is fine and the robot
-moves wrongly.
+[`LOGICAL_TO_PCA_CHANNEL[i]`](../../firmware/common/sesame_servo_map.h), defined
+in `firmware/common/sesame_servo_map.h`. Assuming identity between logical index
+and physical channel silently breaks every animation — the wiring is fine and
+the robot moves wrongly.
 
 The full physical-to-logical table and the translation invariant are recorded
 in the [netlist](../wiring/netlist.md), rows 19–26 and the invariants section.

@@ -10,8 +10,8 @@ else — if the two disagree, the netlist wins.
 ## What changed vs upstream
 
 Branch point: [`dorianborian/sesame-robot`](https://github.com/dorianborian/sesame-robot)
-@ `86d2bf8`. The diff is deliberately tiny — **166 changed lines, four
-substantive edits**, exactly the blast radius predicted in
+@ `86d2bf8`. The diff is deliberately tiny — the substantive edits below are
+exactly the blast radius predicted in
 [`docs/upstream/divergence.md`](../../docs/upstream/divergence.md):
 
 | Upstream | Change |
@@ -22,7 +22,6 @@ substantive edits**, exactly the blast radius predicted in
 | `ESP32PWM::allocateTimer()` ×4 | Removed. The MCU no longer generates servo PWM |
 | `setServoAngle()` | Rewritten onto `pwm.setPWM(channel, 0, pulse)` |
 | — | **Added:** PCA9685 `OE` on GPIO18, held disabled through boot |
-| — | **Added:** UWB pin reservations (defines only, nothing driven) |
 
 Everything else — the face engine, `movement-sequences.h`, the JSON API, the
 captive portal, Sesame Studio compatibility — is byte-identical to upstream.
@@ -32,11 +31,12 @@ hardware boundary, not by assuming physical channel `n` equals logical index `n`
 ## Logical-to-physical channel translation
 
 Physical PCA9685 channel order does not match upstream logical index order.
-The firmware translates at the hardware boundary using:
+The firmware translates at the hardware boundary using
+[`LOGICAL_TO_PCA_CHANNEL`](../common/sesame_servo_map.h), defined in
+`firmware/common/sesame_servo_map.h`:
 
-```c
-// servosLogicalToPCA[logical_index] = PCA9685_channel
-const uint8_t servosLogicalToPCA[8] = {4, 5, 0, 1, 7, 6, 2, 3};
+```c++
+constexpr uint8_t LOGICAL_TO_PCA_CHANNEL[SERVO_COUNT] = {4, 5, 0, 1, 7, 6, 2, 3};
 ```
 
 | Logical index | Upstream name | PCA9685 ch | Physical joint |
@@ -214,11 +214,11 @@ of this sketch.
 
 ## Not implemented
 
-**UWB runtime is absent from this sketch.** The SPI-based raw UWB radio
-header (netlist rows 27–34) is reserved and unpopulated. The sketch defines
-the pin numbers and deliberately never calls `pinMode()` on them, so they stay
-high-Z. Stage 2 owns future UWB integration; the selected route is Makerfabs
-ESP32 UWB DW3000 over UART, not SPI.
+**UWB runtime and pin assignments are absent from this sketch.** It contains
+only a comment recording that UWB is deliberately absent. The SPI-based raw
+UWB radio header remains reserved and unpopulated in the netlist (rows 27–34),
+but this firmware does not configure it. Stage 2 owns future UWB integration;
+the selected route is Makerfabs ESP32 UWB DW3000 over UART, not SPI.
 
 `RSTn` (GPIO21) is **open-drain**: pull low to reset, release to high-Z, never
 drive high. See [`docs/wiring/expansion.md`](../../docs/wiring/expansion.md)
