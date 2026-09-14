@@ -9,6 +9,7 @@
 #include "face-bitmaps.h"
 #include "movement-sequences.h"
 #include "captive-portal.h"
+#include "../common/sesame_servo_map.h"
 
 // --- Access Point Configuration ---
 // This is the network the Robot will create
@@ -48,35 +49,9 @@
 // 16-17). Two devices, one bus, distinct addresses.
 #define PCA9685_I2C_ADDR 0x40
 
-// PCA9685 output enable -- ACTIVE LOW (netlist row 18).
-// HIGH = all 16 channels disabled. LOW = outputs live.
-#define PCA9685_OE_PIN 18
-
-// --- UWB header -- RESERVED, NOT POPULATED --------------------------------
-// The pads are landed in the harness (netlist rows 27-34) but no module is
-// fitted and no driver runs here. These numbers are recorded so a future
-// DWM1000/DWM3000 integration does not have to rediscover them.
-//
-// They are deliberately left uninitialised -- setup() never calls pinMode()
-// on them, so they stay high-Z. Do not drive an unpopulated header.
-//
-// RSTn is OPEN-DRAIN: pull it low to reset, release it to high-Z otherwise.
-// Never drive it high -- that fights the module's internal pull-up.
-//
-// Note for whoever fits a module: the DW1000's 20 MHz SPI maximum is
-// conditional on its clock PLL being locked. Until it locks, the part accepts
-// only 3 MHz, so open the bus slow and raise the clock after lock -- otherwise
-// initialisation fails in a way that looks like a wiring fault. The DW3000
-// has no such restriction but needs a different, incompatible driver.
-// Background and the module comparison: docs/wiring/expansion.md.
-#define UWB_SCK_PIN    12
-#define UWB_MOSI_PIN   11
-#define UWB_MISO_PIN   13
-#define UWB_CSN_PIN    10
-#define UWB_IRQ_PIN    14
-#define UWB_RSTN_PIN   21   // open-drain: LOW or high-Z only, never HIGH
-#define UWB_WAKEUP_PIN 16   // DWM3000 only; unconnected for DWM1000
-#define UWB_EXTON_PIN  17   // DWM3000 only; unconnected for DWM1000
+// UWB is deliberately absent from this acceptance firmware. The selected
+// future architecture is a Makerfabs UART coprocessor; its GPIOs and power
+// remain gated by delivered-board verification in the Stage 2 plan.
 
 
 // DNS Server for Captive Portal
@@ -138,21 +113,29 @@ const uint32_t WIFI_SETUP_START_DELAY_MS = 300;  // let the HTTP response flush 
 // is therefore no servoPins[] array any more -- servos are addressed by
 // PCA9685 channel, not by GPIO.
 //
-// CHANNEL ORDER IS LOAD-BEARING. PCA9685 channel n drives the leg that
-// upstream's servoPins[n] drove:
+// LOGICAL-TO-PHYSICAL TRANSLATION. Callers (movement-sequences.h, the web
+// UI, and the serial CLI) use logical indices 0-7 (R1-R4, L1-L4). These do
+// NOT map 1:1 to PCA9685 channel numbers. setServoAngle() translates via
+// LOGICAL_TO_PCA_CHANNEL from sesame_servo_map.h before issuing the pulse:
 //
-//   ch0 <- servoPins[0]   ch2 <- servoPins[2]   ch4 <- servoPins[4]   ch6 <- servoPins[6]
-//   ch1 <- servoPins[1]   ch3 <- servoPins[3]   ch5 <- servoPins[5]   ch7 <- servoPins[7]
+//   logical 0 R1 -> ch4 URF    logical 4 R4 -> ch7 LRB
+//   logical 1 R2 -> ch5 URB    logical 5 R3 -> ch6 LRF
+//   logical 2 L1 -> ch0 ULF    logical 6 L3 -> ch2 LLF
+//   logical 3 L2 -> ch1 ULB    logical 7 L4 -> ch3 LLB
 //
-// movement-sequences.h and anything authored in Sesame Studio are written
-// against these indices, so reordering channels to tidy the harness would
-// leave the wiring correct and make the robot move wrongly. This is what
-// keeps the animation format portable -- see docs/wiring/netlist.md rows
-// 19-26 and docs/upstream/divergence.md.
+// See firmware/common/sesame_servo_map.h for the authoritative map and
+// docs/wiring/netlist.md rows 19-26 for the harness-to-board assignment.
 // ======================================================================
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(PCA9685_I2C_ADDR);
 
-static const uint8_t SERVO_COUNT = 8;
+struct ServoOutputEnable {
+  void configureOutput(uint8_t pin) { pinMode(pin, OUTPUT); }
+  void disable(uint8_t pin) { digitalWrite(pin, HIGH); }
+  void enable(uint8_t pin) { digitalWrite(pin, LOW); }
+};
+
+ServoOutputEnable servoOutputEnable;
+bool servoOutputsReady = false;
 
 // --- Pulse geometry -------------------------------------------------------
 // Reproduces upstream's *effective* sweep, which is not the sweep its source
@@ -172,17 +155,17 @@ static const uint8_t SERVO_COUNT = 8;
 // datasheet). setPWMFreq(50) programs prescale 121, giving 50.03 Hz, a
 // 19988us period, and 4.88us per count:
 //
-//   732us  / 4.88us = 150 counts  ->   0 degrees
-//   2500us / 4.88us = 512 counts  -> 180 degrees
+//   732us  / 4.88us = 150 counts  ->   0 degrees (SERVO_MIN_PULSE)
+//   2500us / 4.88us = 512 counts  -> 180 degrees (SERVO_MAX_PULSE)
 //
 // WARNING: 600 counts (2929us) is the value upstream asked for and never got,
-// and it is what the initial 3-servo bench sketch used. Raising SERVOMAX to
-// 600 makes every existing animation over-travel roughly 17% at the top of
+// and it is what the initial 3-servo bench sketch used. Raising SERVO_MAX_PULSE
+// to 600 makes every existing animation over-travel roughly 17% at the top of
 // the sweep, which risks linkage bind or servo stall once legs are attached.
 // Widen it only after a loaded bench test, one leg at a time.
-#define SERVO_FREQ_HZ 50
-#define SERVOMIN 150   // 732us  -- upstream 0 degrees
-#define SERVOMAX 512   // 2500us -- upstream 180 degrees, after the clamp
+//
+// SERVO_FREQUENCY_HZ, SERVO_MIN_PULSE, and SERVO_MAX_PULSE are defined in
+// firmware/common/sesame_servo_map.h and shared across the codebase.
 
 // Subtrim values for each servo (offset in degrees)
 int8_t servoSubtrim[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -267,7 +250,7 @@ const FaceFpsEntry faceFpsEntries[] = {
 
 
 // Prototypes
-void setServoAngle(uint8_t channel, int angle);
+void setServoAngle(uint8_t logicalIndex, int angle);
 void updateFaceBitmap(const unsigned char* bitmap);
 void setFace(const String& faceName);
 void setFaceMode(FaceAnimMode mode);
@@ -728,10 +711,8 @@ void setup() {
   randomSeed(micros());
 
   // Hold the PCA9685 outputs off before anything else touches the bus, so the
-  // servos cannot twitch while the driver is being configured. Released at the
-  // end of setup() once the PWM frequency is programmed.
-  pinMode(PCA9685_OE_PIN, OUTPUT);
-  digitalWrite(PCA9685_OE_PIN, HIGH);   // active low: HIGH = outputs disabled
+  // servos cannot twitch while the driver is being configured.
+  holdServoOutputsDisabled(servoOutputEnable);
 
   // I2C Init for ESP32
   Wire.begin(I2C_SDA, I2C_SCL);
@@ -816,22 +797,18 @@ void setup() {
   // objects. Both are gone: the MCU no longer generates servo PWM, so the
   // timers are not needed and there is nothing to attach.
 
-  // Probe the device explicitly rather than trusting pwm.begin(), whose
-  // return type differs between library versions.
   Wire.beginTransmission(PCA9685_I2C_ADDR);
-  if (Wire.endTransmission() != 0) {
-    Serial.println(F("PCA9685 not responding at 0x40 - check SDA/SCL, and that"));
-    Serial.println(F("VCC is on 3V3 (logic) and V+ on the 5V rail (servo power)."));
+  const bool pcaReady = Wire.endTransmission() == 0;
+  if (!pcaReady) {
+    Serial.println(F("PCA9685 not responding at 0x40 - servo outputs remain disabled."));
+    Serial.println(F("Check SDA/SCL, VCC on 3V3, and V+ on the 5V servo rail."));
+  } else {
+    pwm.begin();
+    pwm.setPWMFreq(SERVO_FREQUENCY_HZ);
+    delay(10);
+    servoOutputsReady =
+        enableClearedPcaOutputs(pwm, servoOutputEnable, pcaReady);
   }
-
-  pwm.begin();
-  pwm.setPWMFreq(SERVO_FREQ_HZ);
-  delay(10);
-
-  // Every channel is still at 0 (no pulse), so the servos are limp -- upstream
-  // booted the same way, never commanding a position in setup(). Safe to
-  // enable the outputs now.
-  digitalWrite(PCA9685_OE_PIN, LOW);    // active low: LOW = outputs live
   
   // Show rest face on startup without moving motors
   setFace("rest");
@@ -1138,16 +1115,17 @@ void updateIdleBlink() {
 }
 
 // ====== HELPERS ======
-void setServoAngle(uint8_t channel, int angle) { 
-  if (channel < SERVO_COUNT) {
-    int adjustedAngle = constrain(angle + servoSubtrim[channel], 0, 180);
-    // Upstream: servos[channel].write(adjustedAngle), where ESP32Servo applied
-    // map(angle, 0, 180, min, max) internally. Same mapping, done explicitly
-    // against PCA9685 counts. See SERVOMIN/SERVOMAX for the derivation.
-    uint16_t pulse = map(adjustedAngle, 0, 180, SERVOMIN, SERVOMAX);
-    pwm.setPWM(channel, 0, pulse);
-    delayWithFace(motorCurrentDelay);
-  }
+void setServoAngle(uint8_t logicalIndex, int angle) {
+  if (!servoOutputsReady) return;
+
+  const TranslatedServoCommand command =
+      translateServoCommand(logicalIndex, angle, servoSubtrim);
+  if (!command.valid) return;
+
+  const uint16_t pulse =
+      servoAngleToPulse(command.adjustedAngle);
+  pwm.setPWM(command.pcaChannel, 0, pulse);
+  delayWithFace(motorCurrentDelay);
 }
 
 bool pressingCheck(String cmd, int ms) {
