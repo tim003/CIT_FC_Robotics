@@ -39,10 +39,4 @@ inline void formatServoCell(char* output, size_t outputSize,
            servo.abbreviation, static_cast<int>(displayAngle));
 }
 
-// Legacy compatibility alias for diagnostics that still use this name.
-template <typename OutputEnable>
-void enableServoOutputs(OutputEnable& outputEnable) {
-  outputEnable.enable(PCA9685_OUTPUT_ENABLE_PIN);
-}
-
 #endif
