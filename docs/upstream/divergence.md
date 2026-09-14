@@ -16,19 +16,20 @@ fixes by hand if they are worth having.
 ## Firmware changes made
 
 Implemented in
-[`firmware/sesame-s3-pca9685/`](../../firmware/sesame-s3-pca9685/README.md),
-built as a byte-identical copy of upstream's sketch with six surgical edits —
-166 changed lines total. Everything below was the predicted blast radius, and
-nothing outside it moved.
+[`firmware/sesame-s3-pca9685/`](../../firmware/sesame-s3-pca9685/README.md) as
+a focused port of upstream's sketch. The substantive firmware deltas are
+summarised below.
 
 **Status: Stage 1 — all eight physical servo channels verified 2026-09-14;
 production animation acceptance open.** It builds clean for
 `esp32:esp32:esp32s3` (core 3.3.11, Adafruit PWM Servo Driver 3.0.3) at 84 % of
 program storage, and the pulse geometry below is verified arithmetically. The
 [colleague-built perfboard evidence](../../hardware/circuit%20layout/README.md)
-verifies power-up, I2C on GPIO2/GPIO3, and all eight physical PCA9685 channels
-with correct OLED labelling. Complete production animation and loaded floor
-operation remain pending. Generated wiring diagrams were retired because
+verifies power-up, I2C on GPIO2/GPIO3, and movement of three servos on channels
+0–2. The user's 2026-09-14 assembled-robot run of
+[`firmware/test/robotics_esp32s3/`](../../firmware/test/robotics_esp32s3/)
+verified all eight physical PCA9685 channels and their OLED joint labels.
+Complete production animation and loaded floor operation remain pending. Generated wiring diagrams were retired because
 they were not confirmed build evidence.
 
 Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
@@ -50,7 +51,8 @@ open-drain: drive low or leave floating, never drive high.
 | `I2C_SDA` / `I2C_SCL` defines | Repointed to GPIO2 / GPIO3 |
 | `ESP32PWM::allocateTimer()` × 4 | Removed. PWM generation no longer happens on the MCU, so the timers are not needed |
 | `#include <ESP32Servo.h>` | Replaced by `Adafruit_PWMServoDriver.h`. `ESP32Servo` is no longer a dependency |
-| — *(new)* | PCA9685 `OE` on GPIO18, held HIGH through boot and released only after the PWM frequency is programmed |
+| — *(new shared header)* | `firmware/common/sesame_servo_map.h` defines the verified logical-to-physical translation; `setServoAngle()` maps upstream logical indices through `LOGICAL_TO_PCA_CHANNEL` before writing PCA9685 outputs |
+| — *(new)* | PCA9685 `OE` on GPIO18 is held HIGH through boot and released only after a successful `0x40` probe, 50 Hz setup, and all 16 outputs being set full-off |
 
 ### The pulse-width bounds
 

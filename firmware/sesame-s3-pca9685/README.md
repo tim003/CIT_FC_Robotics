@@ -21,7 +21,8 @@ exactly the blast radius predicted in
 | `Servo servos[8]` + `servoPins[8]` + 8×`attach()` | Removed. One PCA9685 object |
 | `ESP32PWM::allocateTimer()` ×4 | Removed. The MCU no longer generates servo PWM |
 | `setServoAngle()` | Rewritten onto `pwm.setPWM(channel, 0, pulse)` |
-| — | **Added:** PCA9685 `OE` on GPIO18, held disabled through boot |
+| — | **Added:** shared `firmware/common/sesame_servo_map.h`; `setServoAngle()` translates upstream logical indices through `LOGICAL_TO_PCA_CHANNEL` before writing PCA9685 outputs |
+| — | **Added:** PCA9685 `OE` on GPIO18, held HIGH through boot and released only after a successful `0x40` probe, 50 Hz setup, and all 16 outputs being set full-off |
 
 Everything else — the face engine, `movement-sequences.h`, the JSON API, the
 captive portal, Sesame Studio compatibility — is byte-identical to upstream.
@@ -162,10 +163,10 @@ The three that destroy hardware:
    the PCA9685's own 3-pin headers.
 
 On boot the sketch drives `OE` HIGH (outputs disabled) before touching I2C.
-All sixteen PCA9685 channels are set to full-off before `OE` is released, so
-no stale PWM state survives a warm restart. `OE` is released LOW only after
-the PWM frequency is programmed and all channels are cleared. Servos stay
-limp until the first command, same as upstream.
+After a successful `0x40` probe, the PWM frequency is programmed and all
+sixteen PCA9685 channels are set to full-off before `OE` is released LOW, so no
+stale PWM state survives a warm restart. Servos stay limp until the first
+command, same as upstream.
 
 If the PCA9685 does not answer at its I2C address, the serial log says so at
 115200 baud rather than failing silently (fail-closed probe).
@@ -228,8 +229,10 @@ before fitting a module.
 
 After a complete assembly, verify movement in this order:
 
-1. **Rest** — all servos at 0°; robot lies flat.
-2. **Stand** — all servos at 90°; robot stands upright. Verify no binding.
+1. **Rest** — all eight logical servos are commanded to 90°; inspect every
+   joint before continuing.
+2. **Stand** — expect logical angles R1=135°, R2=45°, L1=45°, L2=135°,
+   R4=0°, R3=180°, L3=0°, and L4=180°; verify the stance without binding.
 3. **Wave** — one front leg cycles; verify range of motion.
 4. **Walk (raised)** — full gait cycle with robot lifted clear of the floor;
    verify all eight servos move in the correct sequence.

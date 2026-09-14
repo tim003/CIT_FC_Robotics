@@ -76,9 +76,11 @@ Violating any of these is a bug, not a style choice.
 **Stage 1 — all eight physical PCA9685 channels and OLED labels verified
 2026-09-14; production acceptance incomplete.** The
 [colleague-built perfboard evidence](hardware/circuit%20layout/README.md)
-verifies power-up, I2C on GPIO2/GPIO3, and all eight physical servo channels
-with correct OLED labelling. Complete production animation and loaded floor
-operation remain pending. The production netlist, pin map, power design,
+verifies power-up, I2C on GPIO2/GPIO3, and movement of three servos on channels
+0–2. The user's 2026-09-14 assembled-robot run of
+[`firmware/test/robotics_esp32s3/`](firmware/test/robotics_esp32s3/) verified all
+eight physical channels and their OLED joint labels. Complete production
+animation and loaded floor operation remain pending. The production netlist, pin map, power design,
 expansion notes, and assembly guide remain under
 [`docs/wiring/`](docs/wiring/README.md), with the BOM delta in
 [`hardware/bom.md`](hardware/bom.md). The generated wiring diagrams were
@@ -86,12 +88,13 @@ retired because they were not confirmed build evidence; Stage 1 now uses the
 two raster sources and explicit evidence boundaries. Consistency is enforced
 by `scripts/check-wiring-docs.sh`.
 
-The PCA9685 firmware port in
+The diagnostic sketch in
+[`firmware/test/robotics_esp32s3/`](firmware/test/robotics_esp32s3/) verified
+the physical channel-to-joint mapping on hardware. The shared translation code
+is host-tested and the production PCA9685 firmware in
 [`firmware/sesame-s3-pca9685/`](firmware/sesame-s3-pca9685/README.md) compiles,
-boots on a real ESP32-S3 Super Mini, renders the display, and has exercised all
-eight servo channels. The physical-to-logical translation is verified and
-committed. Animation data is untouched, but complete production animation and
-loaded floor operation remain unverified. Blast radius and pulse-width arithmetic are recorded in
+but that production sketch has not been uploaded. Animation data is untouched;
+production animation and hardware acceptance remain pending. Blast radius and pulse-width arithmetic are recorded in
 [`docs/upstream/divergence.md`](docs/upstream/divergence.md). Bring-up sketches
 and the board acceptance test live in [`firmware/test/`](firmware/test/README.md).
 
