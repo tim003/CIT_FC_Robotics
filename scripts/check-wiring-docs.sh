@@ -139,6 +139,21 @@ if [ -f docs/wiring/netlist.md ]; then
   done_ok "physical servo channels map to upstream logical identities"
 fi
 
+# 10. The physical OLED is SSD1315; SSD1306 is only the compatible library/API.
+mark
+for f in README.md ARCHITECTURE.md docs/wiring/netlist.md hardware/bom.md; do
+  grep -q 'SSD1315' "$f" || err "$f does not identify the SSD1315 display"
+done
+if grep -rnE 'SSD1306 (`VCC`|`SDA`|`SCL`|128×64 OLED|OLED display)' \
+  README.md ARCHITECTURE.md docs/wiring hardware 2>/dev/null; then
+  err "SSD1306 remains mislabeled as physical OLED hardware"
+fi
+grep -q 'MN096-12864-4' docs/wiring/display.md \
+  || err "display record is missing exact module MN096-12864-4"
+grep -q 'Adafruit_SSD1306' docs/wiring/display.md \
+  || err "display record does not preserve the compatible library identity"
+done_ok "SSD1315 hardware identity kept separate from SSD1306 software API"
+
 if [ "$fail" -ne 0 ]; then
   echo "consistency checks FAILED" >&2
   exit 1

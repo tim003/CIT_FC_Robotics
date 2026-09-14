@@ -95,6 +95,12 @@ Verified against these exact versions:
 | Adafruit PWM Servo Driver Library | 3.0.3 |
 | Adafruit SSD1306 + Adafruit GFX + Adafruit BusIO | installed |
 
+The physical display is the
+[`MN096-12864-4` SSD1315 module](../../docs/wiring/display.md). The
+`Adafruit_SSD1306` library and its `SSD1306_*` identifiers are intentionally
+retained because the spare display was hardware-verified compatible; the
+library name is not the controller identity.
+
 `ESP32Servo` is **no longer needed** and should not be installed for this
 sketch.
 
@@ -181,21 +187,22 @@ Inherited from upstream, unchanged:
 
 ```c
 if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
-  Serial.println(F("SSD1306 allocation failed."));
+  Serial.println(F("OLED initialization failed."));
   while (1);            // halts here
 }
 ```
 
-This runs **before** `WiFi.softAP()`. If the SSD1306 does not answer at `0x3C`,
-the board stops dead and the `Sesame-Controller` network never appears — which
-looks like a Wi-Fi fault but is an I2C fault.
+This runs **before** `WiFi.softAP()`. If the SSD1315 display module does not
+answer at `0x3C`, the board stops dead and the `Sesame-Controller` network
+never appears — which looks like a Wi-Fi fault but is an I2C fault.
 
 First checkpoint on boot: the OLED should display `Setting up WiFi...`. If it
 does, I2C is fine and the halt is not your problem.
 
 To find out what is actually on the bus, run
-[`firmware/test/i2c-scan`](../test/i2c-scan/i2c-scan.ino). Some SSD1306 modules
-are strapped to `0x3D` rather than `0x3C`.
+[`firmware/test/i2c-scan`](../test/i2c-scan/i2c-scan.ino). The installed
+MN096-12864-4 SSD1315 module answers at `0x3C`; other compatible OLED modules
+may be strapped to `0x3D`.
 
 ## Known trap: a breadboard kills the Wi-Fi radio
 

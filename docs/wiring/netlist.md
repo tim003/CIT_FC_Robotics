@@ -31,15 +31,16 @@ Wire gauge: **22AWG** for power and ground, **30AWG** for data and logic.
 | # | From | To | Gauge | Notes |
 |---|---|---|---|---|
 | 12 | ESP32-S3 `3V3` | PCA9685 `VCC` | 30AWG | **Logic only — this is not `V+`** |
-| 13 | ESP32-S3 `3V3` | SSD1306 `VCC` | 30AWG | |
+| 13 | ESP32-S3 `3V3` | SSD1315 module `VCC` | 30AWG | MN096-12864-4 |
 | 14 | ESP32-S3 `3V3` | UWB header `3V3` | 30AWG | |
 | 15 | ESP32-S3 `GND` | `GND_STAR` | 22AWG black | |
-| 16 | ESP32-S3 `GPIO2` | PCA9685 `SDA` + SSD1306 `SDA` | 30AWG | Shared bus |
-| 17 | ESP32-S3 `GPIO3` | PCA9685 `SCL` + SSD1306 `SCL` | 30AWG | Shared bus |
+| 16 | ESP32-S3 `GPIO2` | PCA9685 `SDA` + SSD1315 module `SDA` | 30AWG | Shared bus |
+| 17 | ESP32-S3 `GPIO3` | PCA9685 `SCL` + SSD1315 module `SCL` | 30AWG | Shared bus |
 | 18 | ESP32-S3 `GPIO18` | PCA9685 `OE` | 30AWG | Active-low |
 
 Rows 16 and 17 are one bus, not four point-to-point wires. Both peripherals
-sit on it in parallel: SSD1306 at `0x3C`, PCA9685 at `0x40`.
+sit on it in parallel: the [MN096-12864-4 SSD1315 display](display.md) at
+`0x3C`, and PCA9685 at `0x40`.
 
 ## Servos
 

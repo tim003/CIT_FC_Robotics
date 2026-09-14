@@ -23,8 +23,9 @@ detune the radio just as a breadboard does — see
 
 ### `i2c-scan`
 Scans the I2C bus on GPIO2 (SDA) and GPIO3 (SCL) and lists what answers.
-Expect the SSD1306 and the PCA9685 at the two addresses given in
-[../../docs/wiring/netlist.md](../../docs/wiring/netlist.md). Use it whenever
+Expect the MN096-12864-4 SSD1315 display and the PCA9685 at the two addresses
+given in [../../docs/wiring/netlist.md](../../docs/wiring/netlist.md). The OLED
+still uses the compatible Adafruit SSD1306 library. Use this scan whenever
 the display stays blank or the servo driver does not respond — the main
 firmware halts on a missing display, which looks like a boot failure.
 

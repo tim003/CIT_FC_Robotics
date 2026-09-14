@@ -1,6 +1,6 @@
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_SSD1306.h>  // Compatible driver for MN096-12864-4 SSD1315.
 #include <Adafruit_GFX.h>
 
 #include "robotics_esp32s3_servo_map.h"
