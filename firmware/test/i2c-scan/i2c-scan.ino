@@ -2,7 +2,7 @@
 //
 // Answers one question: what is actually answering on GPIO2/GPIO3?
 // Expected for this build (see docs/wiring/netlist.md):
-//   0x3C  MN096-12864-4 SSD1315 OLED
+//   0x3C  SSD1306 OLED
 //   0x40  PCA9685 servo driver
 //
 // If a device is missing here, the main sketch cannot talk to it either --
@@ -31,8 +31,7 @@ void loop() {
     Wire.beginTransmission(addr);
     if (Wire.endTransmission() == 0) {
       Serial.printf("  found 0x%02X", addr);
-      if (addr == 0x3C) Serial.print("   <- MN096-12864-4 SSD1315 OLED");
-      if (addr == 0x3D) Serial.print("   <- compatible OLED (alternate address)");
+      if (addr == 0x3C || addr == 0x3D) Serial.print("   <- SSD1306 OLED");
       if (addr == 0x40) Serial.print("   <- PCA9685");
       if (addr == 0x70) Serial.print("   <- PCA9685 all-call (normal)");
       Serial.println();

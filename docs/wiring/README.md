@@ -35,7 +35,6 @@ coprocessors. Its arrival audit, integration, and acceptance gates are in the
 | [netlist.md](netlist.md) | You are soldering. The source of truth |
 | [pin-map.md](pin-map.md) | You need to know what a GPIO does, or want to assign a new one |
 | [power.md](power.md) | Before first power-on, and before adding any load |
-| [display.md](display.md) | Identifying the SSD1315 OLED hardware and its compatible Adafruit SSD1306 driver |
 | [expansion.md](expansion.md) | Adding a UWB module or using the spare PWM channels |
 | [antenna.md](antenna.md) | Seating the board, laying out a PCB, or closing a chassis |
 | [Stage 1 evidence record](../../hardware/circuit%20layout/README.md) | You need the colleague-tested wiring table, perfboard layout, or bench photographs |

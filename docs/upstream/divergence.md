@@ -32,12 +32,6 @@ verified all eight physical PCA9685 channels and their OLED joint labels.
 Complete production animation and loaded floor operation remain pending. Generated wiring diagrams were retired because
 they were not confirmed build evidence.
 
-The project display is an
-[`MN096-12864-4` SSD1315 module](../wiring/display.md), replacing upstream's
-nominal SSD1306 module. Firmware retains Adafruit's `Adafruit_SSD1306` library
-and `SSD1306_*` API names because that compatibility was verified on the spare
-display; those software identifiers do not identify the installed controller.
-
 Two Makerfabs ESP32 UWB DW3000 WROOM evaluation boards were purchased on
 2026-09-09 but have not arrived or been integrated. They define the selected
 Stage 2 route: each Makerfabs onboard ESP32 acts as a UWB coprocessor over UART.

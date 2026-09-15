@@ -58,7 +58,7 @@ enforces cross-document consistency mechanically.
 | ESP32-S3 Super Mini | Controller. I2C on GPIO2 / GPIO3 |
 | PCA9685 | 16-channel 12-bit PWM/servo driver, I2C `0x40` |
 | 8× MG90S servo | Legs (2 per leg) |
-| [MN096-12864-4 SSD1315 128×64 OLED](docs/wiring/display.md) | Face, I2C `0x3C`; driven through the compatible Adafruit SSD1306 library |
+| SSD1306 128×64 OLED | Face, I2C `0x3C` |
 | LM2596S | Buck converter for battery operation |
 
 Frame, CAD, and STLs come from upstream — they are not duplicated here.

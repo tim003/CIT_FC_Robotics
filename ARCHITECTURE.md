@@ -32,7 +32,7 @@ Two things distinguish this project from upstream:
 |---|---|---|---|
 | Compute | ESP32-S3 Super Mini | — | Dual-core, BLE, Wi-Fi FTM capable |
 | Actuation | PCA9685 → 8× MG90S servos | I2C `0x40` | ch0–7 legs; ch8 reserved; ch9–15 spare |
-| Display | [MN096-12864-4 SSD1315 128×64 OLED](docs/wiring/display.md) | I2C `0x3C` | Shares the bus with PCA9685; uses the compatible Adafruit SSD1306 library |
+| Display | SSD1306 128×64 OLED | I2C `0x3C` | Shares the bus with PCA9685 |
 | Power | LM2596S buck + USB-C, SPDT-selected | 5V rail | Star topology |
 | Sensing *(Stage 2 selected)* | Makerfabs ESP32 UWB DW3000 WROOM | UART, pins gated | Onboard ESP32 is the UWB coprocessor; two evaluation boards purchased, not yet delivered or integrated |
 | Sensing *(optional)* | Bare UWB radio, unpopulated | SPI, 8-pin header | DWM1000/DWM3000 agnostic; not the selected Stage 2 route |

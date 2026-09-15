@@ -45,9 +45,8 @@
 #define I2C_SDA 2
 #define I2C_SCL 3
 
-// PCA9685 shares the bus with the MN096-12864-4 SSD1315 display at
-// OLED_I2C_ADDR (netlist rows 16-17). Adafruit_SSD1306 is the verified
-// compatible software driver; two devices share one bus at distinct addresses.
+// PCA9685 shares the bus with the SSD1306 at OLED_I2C_ADDR (netlist rows
+// 16-17). Two devices, one bus, distinct addresses.
 #define PCA9685_I2C_ADDR 0x40
 
 // UWB is deliberately absent from this acceptance firmware. The selected
@@ -720,7 +719,7 @@ void setup() {
 
   // OLED Init
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
-    Serial.println(F("OLED initialization failed."));
+    Serial.println(F("SSD1306 allocation failed."));
     while (1);
   }
   

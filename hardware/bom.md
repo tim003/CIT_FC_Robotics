@@ -16,7 +16,6 @@ duplicated here — see
 | 8-pin header | 1 | Optional bare-radio SPI UWB interface. Landed but unpopulated; not the selected Stage 2 route |
 | Makerfabs ESP32 UWB DW3000 WROOM evaluation board | 2 purchased | Stage 2 UART-connected UWB coprocessor; intended quantity after acceptance is one per robot |
 | ESP32-S3 Super Mini | 1 | MCU. Replaces upstream's S2 Mini / DevKitC |
-| MN096-12864-4 SSD1315 128×64 OLED | 1 | Face display at I2C `0x3C`. Replaces upstream's nominal SSD1306 module; uses the compatible Adafruit SSD1306 library |
 | 2S 18650 pack, protected, XH2.54-2P | 1 | 7.4 V nominal supply, USB-charged |
 
 ## Removed
@@ -30,6 +29,7 @@ duplicated here — see
 Carried over from upstream without modification:
 
 - 8 × MG90S servos
+- SSD1306 OLED display
 - All frame and mechanical hardware — CAD and STL assets stay upstream and are
   referenced by URL, not vendored here
 
@@ -57,9 +57,6 @@ to that header would require the power-budget review in
 
 ## Notes on substitutions
 
-- **The display controller is SSD1315, not SSD1306.** The exact
-  `MN096-12864-4` module identification and the retained compatible library are
-  documented in [`../docs/wiring/display.md`](../docs/wiring/display.md).
 - **The battery pack must be protected.** This design contains no
   undervoltage cutoff of its own and relies on the pack's protection circuit.
   2S 14500 cells are electrically interchangeable at the same 7.4 V, differing

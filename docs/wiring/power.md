@@ -20,7 +20,7 @@ flowchart LR
     MCU5V --> REG3V3["S3 onboard regulator"]
     REG3V3 --> N3V3["3V3"]
     N3V3 --> PCAVCC["PCA9685 VCC<br/>logic only"]
-    N3V3 --> OLED["SSD1315 module VCC"]
+    N3V3 --> OLED["SSD1306 VCC"]
     N3V3 --> UWB["UWB header 3V3"]
     BATT -.->|return| STAR["GND_STAR"]
     BUCK -.->|return| STAR

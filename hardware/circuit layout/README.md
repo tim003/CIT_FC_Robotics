@@ -21,16 +21,11 @@ The colleague-tested connections transcribed from the wiring table are:
 | Battery input | 7.4 V 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
 | Main 5 V supply | LM2596S `OUT+`, adjusted to 5.0 V, to ESP32-S3 `5V` and PCA9685 servo `V+` |
 | Main ground | LM2596S `OUT-` to the shared perfboard ground rail and every module ground |
-| I2C data | MN096-12864-4 SSD1315 module `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
-| I2C clock | MN096-12864-4 SSD1315 module `SCL` and PCA9685 `SCL` to ESP32-S3 GPIO3 |
-| Logic supply | MN096-12864-4 SSD1315 module `VCC` and PCA9685 logic `VCC` to ESP32-S3 `3V3(OUT)` |
+| I2C data | SSD1306 `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
+| I2C clock | SSD1306 `SCL` and PCA9685 `SCL` to ESP32-S3 GPIO3 |
+| Logic supply | SSD1306 `VCC` and PCA9685 logic `VCC` to ESP32-S3 `3V3(OUT)` |
 | Servo signals | MG90S servos 1–3 signal wires to PCA9685 channels 0, 1, and 2 |
 | Servo power | Servos 1–3 red wires to PCA9685 `V+`; brown/black wires to PCA9685 `GND` |
-
-The source image labels the display `SSD1306 OLED`; the controller-specific
-correction to MN096-12864-4 / SSD1315 comes from the module documentation and
-is recorded in [`../../docs/wiring/display.md`](../../docs/wiring/display.md).
-The connection topology in the image is unchanged.
 
 The PNG wiring table specifies a 7.4 V battery input. The separate 6.8 V
 captured-condition annotation appears on

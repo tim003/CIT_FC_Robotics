@@ -37,16 +37,11 @@ The table records the colleague-tested Stage 1 connections:
 | Battery input | 7.4 V 2S 14500 positive and negative to LM2596S `IN+` and `IN-` |
 | Main 5 V supply | LM2596S `OUT+`, adjusted to 5.0 V, to ESP32-S3 `5V` and PCA9685 servo `V+` |
 | Main ground | LM2596S `OUT-` to the shared perfboard ground rail and every module ground |
-| I2C data | MN096-12864-4 SSD1315 module `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
-| I2C clock | MN096-12864-4 SSD1315 module `SCL` and PCA9685 `SCL` to ESP32-S3 GPIO3 |
-| Logic supply | MN096-12864-4 SSD1315 module `VCC` and PCA9685 logic `VCC` to ESP32-S3 `3V3(OUT)` |
+| I2C data | SSD1306 `SDA` and PCA9685 `SDA` to ESP32-S3 GPIO2 |
+| I2C clock | SSD1306 `SCL` and PCA9685 `SCL` to ESP32-S3 GPIO3 |
+| Logic supply | SSD1306 `VCC` and PCA9685 logic `VCC` to ESP32-S3 `3V3(OUT)` |
 | Servo signals | MG90S servos 1–3 signal wires to PCA9685 channels 0, 1, and 2 |
 | Servo power | Servos 1–3 red wires to PCA9685 `V+`; brown/black wires to PCA9685 `GND` |
-
-The source image labels the display `SSD1306 OLED`; the controller-specific
-correction to MN096-12864-4 / SSD1315 comes from the module documentation in
-[`docs/wiring/display.md`](../../wiring/display.md). The connection topology in
-the image is unchanged.
 
 The PNG wiring table specifies a 7.4 V battery input. The separate 6.8 V captured-condition annotation appears on `20260901_CircuitBoardDesign_002_Fixed.jpg`, not on the PNG table; neither image is a battery specification.
 
@@ -103,7 +98,7 @@ Each robot uses two controllers:
 
 ```text
 Robot ESP32-S3 Super Mini
-  I2C -> PCA9685 and MN096-12864-4 SSD1315 OLED
+  I2C -> PCA9685 and SSD1306
   UART -> Makerfabs ESP32 UWB DW3000 WROOM
              onboard SPI -> DW3000
 ```
