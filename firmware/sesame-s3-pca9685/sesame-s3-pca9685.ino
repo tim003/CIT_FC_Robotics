@@ -1,8 +1,22 @@
+// Per-robot OTA identity/credential header. Detected before every other
+// include so ArduinoOTA is compiled in only when OTA is actually configured:
+// a clean checkout keeps the default hostname, links no OTA code, and spends
+// no flash or RAM on it.
+#if __has_include("ota-local-config.h")
+#include "ota-local-config.h"
+#define SESAME_OTA_CONFIGURED 1
+#else
+#define SESAME_OTA_CONFIGURED 0
+#define SESAME_DEVICE_HOSTNAME "sesame-robot"
+#endif
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+#if SESAME_OTA_CONFIGURED
 #include <ArduinoOTA.h>
+#endif
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Adafruit_GFX.h>
@@ -11,14 +25,6 @@
 #include "movement-sequences.h"
 #include "captive-portal.h"
 #include "../common/sesame_servo_map.h"
-
-#if __has_include("ota-local-config.h")
-#include "ota-local-config.h"
-#define SESAME_OTA_CONFIGURED 1
-#else
-#define SESAME_OTA_CONFIGURED 0
-#define SESAME_DEVICE_HOSTNAME "sesame-robot"
-#endif
 
 // --- Access Point Configuration ---
 // This is the network the Robot will create
@@ -98,11 +104,18 @@ String wifiInfoText = "";
 // Network Mode
 bool networkConnected = false;
 IPAddress networkIP;
-constexpr uint16_t OTA_PORT = 3232;
-constexpr bool OTA_CONFIGURED = SESAME_OTA_CONFIGURED;
 String deviceHostname = SESAME_DEVICE_HOSTNAME;
 bool mdnsOk = false;
+#if SESAME_OTA_CONFIGURED
+constexpr uint16_t OTA_PORT = 3232;
+// True once ArduinoOTA reports the transfer itself has begun. Pre-start
+// errors (a rejected password) must not disable the servos -- see
+// otaErrorRequiresServoDisable() in firmware/common/sesame_servo_map.h.
 bool otaUpdateStarted = false;
+// Latched after a post-start OTA failure: the outputs stay disabled until
+// reboot, so the OLED warning must not be repainted over by the face engine.
+bool otaFailedUntilReboot = false;
+#endif
 
 // Runtime WiFi provisioning (web UI) — the connect attempt runs as a state
 // machine driven from loop() so HTTP handlers never block the captive portal.
@@ -287,10 +300,12 @@ void handleWifiStatus();
 void handleNotFound();
 String jsonEscape(const String& s);
 bool startMdns();
+#if SESAME_OTA_CONFIGURED
 void startOta();
 void showOtaStatus(const __FlashStringHelper* line1,
                    const __FlashStringHelper* line2,
                    const __FlashStringHelper* line3);
+#endif
 void announceNetwork(const String& ssid);
 void setApOnlyInfoText();
 void showWifiInfoNow();
@@ -479,6 +494,7 @@ String jsonEscape(const String& s) {
   return out;
 }
 
+#if SESAME_OTA_CONFIGURED
 void showOtaStatus(const __FlashStringHelper* line1,
                    const __FlashStringHelper* line2,
                    const __FlashStringHelper* line3) {
@@ -493,8 +509,6 @@ void showOtaStatus(const __FlashStringHelper* line1,
 }
 
 void startOta() {
-  if (!OTA_CONFIGURED) return;
-#if SESAME_OTA_CONFIGURED
   ArduinoOTA.setHostname(deviceHostname.c_str());
   ArduinoOTA.setPort(OTA_PORT);
   ArduinoOTA.setPasswordHash(SESAME_OTA_PASSWORD_HASH);
@@ -515,10 +529,15 @@ void startOta() {
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("OTA error: %u.\n", static_cast<unsigned>(error));
-    if (!otaUpdateStarted) {
+    Serial.print(F("OTA error: "));
+    Serial.println(static_cast<unsigned>(error));
+    // Decide before touching any state: ArduinoOTA reports authentication
+    // failures through onError() before onStart(), so a rejected password
+    // must leave the robot running normally.
+    if (!otaErrorRequiresServoDisable(otaUpdateStarted)) {
       return;
     }
+    otaFailedUntilReboot = true;
     prepareServoOutputsForFirmwareUpdate(servoOutputEnable,
                                          servoOutputsReady);
     Serial.println(F("Servo outputs remain disabled until reboot."));
@@ -526,8 +545,8 @@ void startOta() {
   });
 
   ArduinoOTA.begin();
-#endif
 }
+#endif
 
 // Start (or restart, after MDNS.end()) the mDNS responder. Tracks the result
 // in mdnsOk so the API can avoid advertising a .local name that won't resolve.
@@ -536,7 +555,7 @@ bool startMdns() {
   if (mdnsOk) {
     MDNS.addService("http", "tcp", 80);
 #if SESAME_OTA_CONFIGURED
-    MDNS.enableArduino(3232, true);
+    MDNS.enableArduino(OTA_PORT, true);
 #endif
     Serial.println("mDNS responder started: http://" + deviceHostname + ".local");
   } else {
@@ -860,7 +879,9 @@ void setup() {
   server.onNotFound(handleNotFound);
   
   server.begin();
+#if SESAME_OTA_CONFIGURED
   startOta();
+#endif
 
   // PWM Init -- PCA9685 over I2C.
   // Upstream allocated four ESP32 LEDC timers here and attached eight Servo
@@ -1026,6 +1047,11 @@ void loop() {
 
 // Function to update the robot's face
 void updateFaceBitmap(const unsigned char* bitmap) {
+#if SESAME_OTA_CONFIGURED
+  // A latched post-start OTA failure owns the screen until the robot is
+  // rebooted: the servos stay disabled, so the warning must stay visible.
+  if (otaFailedUntilReboot) return;
+#endif
   display.clearDisplay();
   display.drawBitmap(0, 0, bitmap, 128, 64, SSD1306_WHITE);
   display.display();
@@ -1232,6 +1258,10 @@ void recordInput() {
 }
 
 void updateWifiInfoScroll() {
+#if SESAME_OTA_CONFIGURED
+  // Same latch as updateFaceBitmap(): never scroll over the failure warning.
+  if (otaFailedUntilReboot) return;
+#endif
   // Don't show WiFi info if first input has been received
   if (firstInputReceived) {
     if (showingWifiInfo) {

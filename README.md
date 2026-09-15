@@ -47,6 +47,7 @@ Plus at least one reserved output (PCA9685 ch8) for a future actuator.
 | [`docs/wiring/`](docs/wiring/README.md) | The wiring guide, netlist, pin map, power design |
 | [`docs/upstream/`](docs/upstream/divergence.md) | What we changed vs upstream, and why |
 | [`hardware/bom.md`](hardware/bom.md) | BOM delta vs upstream |
+| [`firmware/sesame-s3-pca9685/README.md`](firmware/sesame-s3-pca9685/README.md#wi-fi-firmware-updates) | Firmware build notes, and the **Wi-Fi firmware updates** (OTA) workflow |
 
 Run `scripts/check-wiring-docs.sh` after editing any wiring document — it
 enforces cross-document consistency mechanically.

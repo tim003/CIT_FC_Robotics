@@ -77,6 +77,39 @@ int main() {
   assert(failedPwm.callCount == 0);
   assert(failedOe.enableCount == 0);
 
+  // Pre-start OTA errors (ArduinoOTA reports a rejected password through
+  // onError() before onStart()) must never disable the servo outputs; only an
+  // error after the transfer started keeps them disabled until reboot.
+  static_assert(!otaErrorRequiresServoDisable(false),
+                "pre-start OTA errors must not disable servo outputs");
+  static_assert(otaErrorRequiresServoDisable(true),
+                "post-start OTA errors must disable servo outputs");
+  assert(!otaErrorRequiresServoDisable(false));
+  assert(otaErrorRequiresServoDisable(true));
+
+  // The decision is taken before any state mutation: on the pre-start path no
+  // output-enable call happens and readiness survives untouched.
+  FakeOutputEnable preStartOe;
+  bool preStartReady = true;
+  if (otaErrorRequiresServoDisable(false)) {
+    prepareServoOutputsForFirmwareUpdate(preStartOe, preStartReady);
+  }
+  assert(preStartReady);
+  assert(preStartOe.configuredPin == 255);
+  assert(preStartOe.disabledPin == 255);
+  assert(preStartOe.enableCount == 0);
+
+  // Post-start path: the same helper drives the fail-closed disable.
+  FakeOutputEnable postStartOe;
+  bool postStartReady = true;
+  if (otaErrorRequiresServoDisable(true)) {
+    prepareServoOutputsForFirmwareUpdate(postStartOe, postStartReady);
+  }
+  assert(!postStartReady);
+  assert(postStartOe.configuredPin == PCA9685_OUTPUT_ENABLE_PIN);
+  assert(postStartOe.disabledPin == PCA9685_OUTPUT_ENABLE_PIN);
+  assert(postStartOe.enableCount == 0);
+
   FakeOutputEnable otaOe;
   bool outputsReady = true;
   prepareServoOutputsForFirmwareUpdate(otaOe, outputsReady);

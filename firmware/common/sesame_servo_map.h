@@ -64,6 +64,16 @@ void holdServoOutputsDisabled(OutputEnable& outputEnable) {
   outputEnable.disable(PCA9685_OUTPUT_ENABLE_PIN);
 }
 
+// Decides whether an ArduinoOTA error callback must disable the servo
+// outputs. ArduinoOTA reports authentication failures through onError()
+// *before* onStart() ever runs, so an unauthenticated peer must never be able
+// to limp the robot remotely: only an error raised after the update actually
+// started (outputs already disabled) keeps them disabled until reboot.
+// Pure and host-testable -- no hardware state is touched here.
+constexpr bool otaErrorRequiresServoDisable(bool otaUpdateStarted) {
+  return otaUpdateStarted;
+}
+
 template <typename OutputEnable>
 void prepareServoOutputsForFirmwareUpdate(OutputEnable& outputEnable,
                                           bool& servoOutputsReady) {

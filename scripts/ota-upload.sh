@@ -5,11 +5,16 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 config_path=${SESAME_OTA_CONFIG_PATH:-"$repo_root/firmware/sesame-s3-pca9685/ota-local-config.h"}
 ARDUINO_CLI=${ARDUINO_CLI:-arduino-cli}
 password=
-build_dir=$(mktemp -d "${TMPDIR:-/tmp}/sesame-ota-build.XXXXXX")
+# Created only after the local configuration has been validated, so a missing
+# config cannot leave a temporary directory behind (or fail before reporting
+# the real problem). cleanup() therefore has to tolerate an unset build_dir.
+build_dir=
 
 cleanup() {
   unset password
-  rm -rf "$build_dir"
+  if test -n "$build_dir"; then
+    rm -rf "$build_dir"
+  fi
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
@@ -38,7 +43,8 @@ test "${#configured_hostname}" -le 32 ||
   fail 'Local OTA configuration has an invalid hostname.'
 
 printf 'Current hostname/IP [%s]: ' "$configured_hostname"
-IFS= read -r target
+IFS= read -r target ||
+  fail 'No hostname or IP entered (input ended); nothing was uploaded.'
 if test -z "$target"; then
   target=$configured_hostname
 fi
@@ -48,8 +54,12 @@ case "$target" in
 esac
 
 printf 'OTA password: '
-IFS= read -r -s password
+IFS= read -r -s password ||
+  fail 'No OTA password entered (input ended); nothing was uploaded.'
 printf '\n'
+
+build_dir=$(mktemp -d "${TMPDIR:-/tmp}/sesame-ota-build.XXXXXX") ||
+  fail "Could not create a temporary build directory under ${TMPDIR:-/tmp}."
 
 "$ARDUINO_CLI" compile --clean \
   --build-path "$build_dir" \

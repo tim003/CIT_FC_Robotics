@@ -141,8 +141,12 @@ output to UART0 on GPIO43/44 instead of the USB port — so the serial monitor
 stays completely blank and every diagnostic in this sketch is invisible. In the
 Arduino IDE the same setting is **Tools → USB CDC On Boot → Enabled**.
 
-Last verified `--clean` results: **1,112,361 bytes (84%)** with OTA disabled
-(no local config) and **1,128,073 bytes (86%)** with OTA configured. Both use
+With no local OTA configuration the sketch does not even include ArduinoOTA,
+so the OTA-disabled image carries none of its flash or RAM cost; the OTA-only
+constants, globals, and callbacks are compiled out with it.
+
+Last verified `--clean` results: **1,106,877 bytes (84%)** with OTA disabled
+(no local config) and **1,128,161 bytes (86%)** with OTA configured. Both use
 the default 1,310,720-byte app slot. That is tight on the default partition
 scheme — if you add code and it overflows, switch to a partition scheme with a
 larger app slot rather than deleting faces.
@@ -154,9 +158,12 @@ larger app slot rather than deleting faces.
 
 ## Wi-Fi firmware updates
 
-The currently released firmware does not yet accept Wi-Fi updates. Before the
-first Wi-Fi update, it must receive one final USB flash with OTA configured.
-From the repository root, run:
+A clean checkout has **no Wi-Fi update support at all**: with no local
+configuration present the sketch is compiled without ArduinoOTA, uses the
+default hostname `sesame-robot`, and cannot be updated over Wi-Fi. The
+currently released firmware does not accept Wi-Fi updates either. Before the
+first Wi-Fi update, the robot must therefore receive one final USB flash with
+OTA configured. From the repository root, run:
 
 ```sh
 ./scripts/configure-ota.sh
@@ -169,6 +176,18 @@ network credentials. The generated
 authentication-equivalent password verifier, and is written mode `0600`. Keep a
 secure local backup if recovering the configuration over USB after credential
 loss would be difficult.
+
+What the script accepts, before you run it:
+
+- **Hostname** — 1–32 characters, lowercase letters, digits, and internal
+  hyphens only; no leading or trailing hyphen. Anything else is rejected and
+  any existing configuration is left untouched.
+- **OTA password** — at least 8 bytes, entered twice without echo (8 bytes is
+  8 characters of ASCII; non-ASCII characters count as more than one byte). A
+  mismatch is rejected and, again, changes nothing on disk.
+- **`ota-upload.sh` requires that header.** It refuses to run without it,
+  because the local configuration supplies both the default target hostname and
+  the verifier the robot authenticates against.
 
 With the robot connected over USB, install that configured firmware once:
 
@@ -191,10 +210,22 @@ For every later Wi-Fi update:
 6. Enter the current hostname/IP and OTA password when prompted.
 7. Observe the OLED firmware-update message and do not power off the robot.
 8. Wait for image validation and reboot, then reconnect at the configured
-   hostname.
-9. If the update fails, reboot the robot manually because servo outputs remain
-   disabled.
+   hostname — keeping the robot supported until it is back (see the note
+   below).
+9. If the update fails **after it has started** (OLED: `Update failed` /
+   `Servos disabled` / `Reboot robot`), reboot the robot manually: only a
+   started update disables the servo outputs, and they stay disabled — with
+   that warning latched on the OLED — until reboot. A failure *before* the
+   transfer starts, such as a rejected password, disables nothing and leaves
+   the robot running and commandable.
 10. Use USB recovery if the old image cannot boot or join Wi-Fi.
+
+> **Keep the robot supported through the OTA reboot.** PCA9685 register
+> retention and `OE` state across a warm restart are not guaranteed to be
+> identical to a cold boot, so a brief servo transient between reset and the
+> new firmware driving `OE` HIGH cannot be ruled out from the source alone.
+> This has not been observed on hardware; it is an explicit item to watch
+> during hardware acceptance, not a claim that it happens.
 
 Changing the configured hostname takes effect after reboot and changes HTTP
 mDNS, the station DHCP hostname, the status API, OLED/serial announcements, and
