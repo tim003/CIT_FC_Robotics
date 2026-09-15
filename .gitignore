@@ -8,6 +8,9 @@ credentials*
 *.pem
 id_ed25519*
 
+# Per-robot ArduinoOTA identity and authentication-equivalent password hash.
+firmware/sesame-s3-pca9685/ota-local-config.h
+
 # Agent transients (screenshots, observational memory, parked issues)
 .pi/
 .memory/
