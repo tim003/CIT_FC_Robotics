@@ -64,6 +64,13 @@ void holdServoOutputsDisabled(OutputEnable& outputEnable) {
   outputEnable.disable(PCA9685_OUTPUT_ENABLE_PIN);
 }
 
+template <typename OutputEnable>
+void prepareServoOutputsForFirmwareUpdate(OutputEnable& outputEnable,
+                                          bool& servoOutputsReady) {
+  holdServoOutputsDisabled(outputEnable);
+  servoOutputsReady = false;
+}
+
 template <typename PwmDriver, typename OutputEnable>
 bool enableClearedPcaOutputs(PwmDriver& pwm, OutputEnable& outputEnable,
                              bool pcaReady) {

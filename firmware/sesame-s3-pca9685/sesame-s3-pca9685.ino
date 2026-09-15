@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+#include <ArduinoOTA.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Adafruit_GFX.h>
@@ -10,6 +11,14 @@
 #include "movement-sequences.h"
 #include "captive-portal.h"
 #include "../common/sesame_servo_map.h"
+
+#if __has_include("ota-local-config.h")
+#include "ota-local-config.h"
+#define SESAME_OTA_CONFIGURED 1
+#else
+#define SESAME_OTA_CONFIGURED 0
+#define SESAME_DEVICE_HOSTNAME "sesame-robot"
+#endif
 
 // --- Access Point Configuration ---
 // This is the network the Robot will create
@@ -89,8 +98,11 @@ String wifiInfoText = "";
 // Network Mode
 bool networkConnected = false;
 IPAddress networkIP;
-String deviceHostname = "sesame-robot";
+constexpr uint16_t OTA_PORT = 3232;
+constexpr bool OTA_CONFIGURED = SESAME_OTA_CONFIGURED;
+String deviceHostname = SESAME_DEVICE_HOSTNAME;
 bool mdnsOk = false;
+bool otaUpdateStarted = false;
 
 // Runtime WiFi provisioning (web UI) — the connect attempt runs as a state
 // machine driven from loop() so HTTP handlers never block the captive portal.
@@ -275,6 +287,10 @@ void handleWifiStatus();
 void handleNotFound();
 String jsonEscape(const String& s);
 bool startMdns();
+void startOta();
+void showOtaStatus(const __FlashStringHelper* line1,
+                   const __FlashStringHelper* line2,
+                   const __FlashStringHelper* line3);
 void announceNetwork(const String& ssid);
 void setApOnlyInfoText();
 void showWifiInfoNow();
@@ -463,12 +479,65 @@ String jsonEscape(const String& s) {
   return out;
 }
 
+void showOtaStatus(const __FlashStringHelper* line1,
+                   const __FlashStringHelper* line2,
+                   const __FlashStringHelper* line3) {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  if (line1 != nullptr) display.println(line1);
+  if (line2 != nullptr) display.println(line2);
+  if (line3 != nullptr) display.println(line3);
+  display.display();
+}
+
+void startOta() {
+  if (!OTA_CONFIGURED) return;
+#if SESAME_OTA_CONFIGURED
+  ArduinoOTA.setHostname(deviceHostname.c_str());
+  ArduinoOTA.setPort(OTA_PORT);
+  ArduinoOTA.setPasswordHash(SESAME_OTA_PASSWORD_HASH);
+  ArduinoOTA.setMdnsEnabled(false);
+
+  ArduinoOTA.onStart([]() {
+    otaUpdateStarted = true;
+    currentCommand = "";
+    exitIdle();
+    prepareServoOutputsForFirmwareUpdate(servoOutputEnable,
+                                         servoOutputsReady);
+    showOtaStatus(F("Firmware update"), F("Servos disabled"),
+                  F("Do not power off"));
+  });
+
+  ArduinoOTA.onEnd([]() {
+    showOtaStatus(F("Update complete"), F("Rebooting..."), nullptr);
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("OTA error: %u.\n", static_cast<unsigned>(error));
+    if (!otaUpdateStarted) {
+      return;
+    }
+    prepareServoOutputsForFirmwareUpdate(servoOutputEnable,
+                                         servoOutputsReady);
+    Serial.println(F("Servo outputs remain disabled until reboot."));
+    showOtaStatus(F("Update failed"), F("Servos disabled"), F("Reboot robot"));
+  });
+
+  ArduinoOTA.begin();
+#endif
+}
+
 // Start (or restart, after MDNS.end()) the mDNS responder. Tracks the result
 // in mdnsOk so the API can avoid advertising a .local name that won't resolve.
 bool startMdns() {
   mdnsOk = MDNS.begin(deviceHostname.c_str());
   if (mdnsOk) {
     MDNS.addService("http", "tcp", 80);
+#if SESAME_OTA_CONFIGURED
+    MDNS.enableArduino(3232, true);
+#endif
     Serial.println("mDNS responder started: http://" + deviceHostname + ".local");
   } else {
     Serial.println("Error setting up mDNS responder!");
@@ -791,6 +860,7 @@ void setup() {
   server.onNotFound(handleNotFound);
   
   server.begin();
+  startOta();
 
   // PWM Init -- PCA9685 over I2C.
   // Upstream allocated four ESP32 LEDC timers here and attached eight Servo
@@ -817,6 +887,10 @@ void setup() {
 }
 
 void loop() {
+#if SESAME_OTA_CONFIGURED
+  ArduinoOTA.handle();
+#endif
+
   // Process DNS requests for captive portal
   dnsServer.processNextRequest();
   
@@ -1062,6 +1136,9 @@ void updateAnimatedFace() {
 void delayWithFace(unsigned long ms) {
   unsigned long start = millis();
   while (millis() - start < ms) {
+#if SESAME_OTA_CONFIGURED
+    ArduinoOTA.handle();
+#endif
     updateAnimatedFace();
     server.handleClient();
     dnsServer.processNextRequest();
@@ -1131,6 +1208,9 @@ void setServoAngle(uint8_t logicalIndex, int angle) {
 bool pressingCheck(String cmd, int ms) {
   unsigned long start = millis();
   while (millis() - start < ms) {
+#if SESAME_OTA_CONFIGURED
+    ArduinoOTA.handle();
+#endif
     server.handleClient();
     dnsServer.processNextRequest();
     updateAnimatedFace();

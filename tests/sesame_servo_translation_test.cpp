@@ -77,6 +77,14 @@ int main() {
   assert(failedPwm.callCount == 0);
   assert(failedOe.enableCount == 0);
 
+  FakeOutputEnable otaOe;
+  bool outputsReady = true;
+  prepareServoOutputsForFirmwareUpdate(otaOe, outputsReady);
+  assert(!outputsReady);
+  assert(otaOe.configuredPin == PCA9685_OUTPUT_ENABLE_PIN);
+  assert(otaOe.disabledPin == PCA9685_OUTPUT_ENABLE_PIN);
+  assert(otaOe.enableCount == 0);
+
   FakePwm readyPwm;
   FakeOutputEnable readyOe;
   assert(enableClearedPcaOutputs(readyPwm, readyOe, true));
