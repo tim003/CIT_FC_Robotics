@@ -141,15 +141,70 @@ output to UART0 on GPIO43/44 instead of the USB port — so the serial monitor
 stays completely blank and every diagnostic in this sketch is invisible. In the
 Arduino IDE the same setting is **Tools → USB CDC On Boot → Enabled**.
 
-Last verified result: **1106845 bytes, 84% of program storage**, from a
-`--clean` build. That is tight on the default partition scheme — if you add
-code and it overflows, switch to a partition scheme with a larger app slot
-rather than deleting faces.
+Last verified `--clean` results: **1,112,361 bytes (84%)** with OTA disabled
+(no local config) and **1,128,073 bytes (86%)** with OTA configured. Both use
+the default 1,310,720-byte app slot. That is tight on the default partition
+scheme — if you add code and it overflows, switch to a partition scheme with a
+larger app slot rather than deleting faces.
 
 > **Always verify with `--clean`.** `arduino-cli` caches aggressively and will
 > happily report a successful size for a *previous* build while the current
 > source does not compile at all. A stale cache already produced one false
 > "verified" result on this sketch.
+
+## Wi-Fi firmware updates
+
+The currently released firmware does not yet accept Wi-Fi updates. Before the
+first Wi-Fi update, it must receive one final USB flash with OTA configured.
+From the repository root, run:
+
+```sh
+./scripts/configure-ota.sh
+```
+
+This prompts for the robot's device-wide hostname and OTA password. It does
+**not** change the `Sesame-Controller` AP SSID/password or the saved Wi-Fi
+network credentials. The generated
+`firmware/sesame-s3-pca9685/ota-local-config.h` is gitignored, contains an
+authentication-equivalent password verifier, and is written mode `0600`. Keep a
+secure local backup if recovering the configuration over USB after credential
+loss would be difficult.
+
+With the robot connected over USB, install that configured firmware once:
+
+```sh
+arduino-cli compile --clean \
+  --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+  -u -p /dev/cu.usbmodem* firmware/sesame-s3-pca9685
+```
+
+This one-time USB installation is still pending; the command above is an
+operator step, not a record that an upload has occurred.
+
+For every later Wi-Fi update:
+
+1. Raise or securely support the robot; OTA deliberately makes all servos limp.
+2. Power the robot normally and stop any movement.
+3. Connect the computer to `Sesame-Controller` or to the same LAN as the robot.
+4. Confirm `http://<current-hostname>.local` opens in a browser.
+5. From the repository root, run `./scripts/ota-upload.sh`.
+6. Enter the current hostname/IP and OTA password when prompted.
+7. Observe the OLED firmware-update message and do not power off the robot.
+8. Wait for image validation and reboot, then reconnect at the configured
+   hostname.
+9. If the update fails, reboot the robot manually because servo outputs remain
+   disabled.
+10. Use USB recovery if the old image cannot boot or join Wi-Fi.
+
+Changing the configured hostname takes effect after reboot and changes HTTP
+mDNS, the station DHCP hostname, the status API, OLED/serial announcements, and
+OTA discovery. The upload script clean-builds the image and refuses any binary
+larger than the default OTA slot limit of **1,310,720 bytes**.
+
+The password is read without terminal echo and is not written to the build, but
+`ota-upload.sh` must pass it to `arduino-cli` as a process argument. It can
+therefore be visible briefly to other sufficiently privileged local processes
+during the upload. Run updates only on a trusted computer.
 
 ## Before first power-up
 
