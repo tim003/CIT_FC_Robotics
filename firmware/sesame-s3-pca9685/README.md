@@ -197,8 +197,9 @@ arduino-cli compile --clean \
   -u -p /dev/cu.usbmodem* firmware/sesame-s3-pca9685
 ```
 
-This one-time USB installation is still pending; the command above is an
-operator step, not a record that an upload has occurred.
+The current robot received this one-time configured USB installation on
+2026-09-16. A clean checkout still requires the same step for each new robot
+before its first Wi-Fi update.
 
 For every later Wi-Fi update:
 
@@ -207,7 +208,12 @@ For every later Wi-Fi update:
 3. Connect the computer to `Sesame-Controller` or to the same LAN as the robot.
 4. Confirm `http://<current-hostname>.local` opens in a browser.
 5. From the repository root, run `./scripts/ota-upload.sh`.
-6. Enter the current hostname/IP and OTA password when prompted.
+6. Enter the current hostname/IP and OTA password when prompted. When given a
+   hostname, the script resolves it to IPv4 before invoking Arduino CLI because
+   Arduino CLI keys the discovered network port by its numeric address on
+   macOS. A literal IPv4 address is used unchanged. If automatic resolution
+   fails, rerun the script and enter the network-port IP shown by
+   `arduino-cli board list`.
 7. Observe the OLED firmware-update message and do not power off the robot.
 8. Wait for image validation and reboot, then reconnect at the configured
    hostname — keeping the robot supported until it is back (see the note
@@ -219,6 +225,19 @@ For every later Wi-Fi update:
    transfer starts, such as a rejected password, disables nothing and leaves
    the robot running and commandable.
 10. Use USB recovery if the old image cannot boot or join Wi-Fi.
+
+The uploader does not automatically retry an interrupted transfer. Restore a
+stable connection and run it again deliberately rather than risking two
+competing update attempts.
+
+The first live OTA acceptance completed on 2026-09-16: the transfer reached
+100%, the ESP32 rebooted, and the robot AP/controller returned. That accepted
+run used the literal network-port IP `192.168.4.1`; it proves the upload and
+reboot path, not automatic hostname resolution. Hostname-to-IPv4 resolution is
+covered by the host regression test and still needs confirmation on the next
+live robot upload. ESP32 core 3.3.11 printed `Unexpected response: 864` after
+completion but exited successfully; the observed reboot and restored controller
+confirmed that image.
 
 > **Keep the robot supported through the OTA reboot.** PCA9685 register
 > retention and `OE` state across a warm restart are not guaranteed to be

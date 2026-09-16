@@ -9,6 +9,8 @@ config_path="$tmp/ota-local-config.h"
 output="$tmp/output.log"
 fake_log="$tmp/arduino-cli.log"
 fake_cli="$tmp/arduino-cli"
+resolver_log="$tmp/resolver.log"
+fake_resolver="$tmp/resolve-ota-target"
 
 printf 'sesame-one\npassword12\npassword12\n' |
   SESAME_OTA_CONFIG_PATH="$config_path" \
@@ -84,6 +86,20 @@ esac
 EOF
 chmod +x "$fake_cli"
 
+cat >"$fake_resolver" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+
+printf '%s\n' "$1" >>"$FAKE_RESOLVER_LOG"
+case "$1" in
+  sesame-one.local) printf '%s\n' '192.168.4.1' ;;
+  invalid.local) printf '%s\n' 'not-an-ip-address' ;;
+  multi.local) printf '%s\n' '192.168.4.1' '192.168.50.20' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$fake_resolver"
+
 assert_arg_pair() {
   command_name=$1
   flag=$2
@@ -107,9 +123,51 @@ fi
 grep -F 'Local OTA configuration not found:' "$output"
 test ! -e "$fake_log"
 
-rm -f "$fake_log"
+rm -f "$fake_log" "$resolver_log"
+if printf 'missing\n' |
+   SESAME_OTA_CONFIG_PATH="$config_path" \
+   SESAME_OTA_RESOLVER="$fake_resolver" \
+   FAKE_RESOLVER_LOG="$resolver_log" \
+   ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
+   "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1; then
+  echo 'unresolvable hostname unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -Fx 'missing.local' "$resolver_log"
+grep -F 'Could not resolve OTA target to an IPv4 address: missing.local' "$output"
+test ! -e "$fake_log"
+
+rm -f "$fake_log" "$resolver_log"
+if printf 'invalid\n' |
+   SESAME_OTA_CONFIG_PATH="$config_path" \
+   SESAME_OTA_RESOLVER="$fake_resolver" \
+   FAKE_RESOLVER_LOG="$resolver_log" \
+   ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
+   "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1; then
+  echo 'non-IPv4 resolver output unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -F 'OTA target did not resolve to one valid IPv4 address: invalid.local' "$output"
+test ! -e "$fake_log"
+
+rm -f "$fake_log" "$resolver_log"
+if printf 'multi\n' |
+   SESAME_OTA_CONFIG_PATH="$config_path" \
+   SESAME_OTA_RESOLVER="$fake_resolver" \
+   FAKE_RESOLVER_LOG="$resolver_log" \
+   ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
+   "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1; then
+  echo 'multi-line resolver output unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -F 'OTA target did not resolve to one valid IPv4 address: multi.local' "$output"
+test ! -e "$fake_log"
+
+rm -f "$fake_log" "$resolver_log"
 printf '\npassword12\n' |
   SESAME_OTA_CONFIG_PATH="$config_path" \
+  SESAME_OTA_RESOLVER="$fake_resolver" \
+  FAKE_RESOLVER_LOG="$resolver_log" \
   ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
   "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1
 
@@ -130,7 +188,8 @@ assert_arg_pair compile --build-path "$build_path"
 grep -Fx 'CALL:upload' "$fake_log"
 grep -Fx 'ARG:upload:esp32:esp32:esp32s3:CDCOnBoot=cdc' "$fake_log"
 assert_arg_pair upload --protocol network
-assert_arg_pair upload --port sesame-one.local
+grep -Fx 'sesame-one.local' "$resolver_log"
+assert_arg_pair upload --port 192.168.4.1
 assert_arg_pair upload --upload-property upload.port.properties.port=3232
 firmware_bin=$(awk '
   previous == "ARG:upload:--input-file" {
@@ -149,9 +208,33 @@ assert_arg_pair upload --input-file "$firmware_bin"
 grep -Fx 'ARG:upload:password=password12' "$fake_log"
 ! grep -F password12 "$output"
 
+rm -f "$fake_log" "$resolver_log"
+printf '192.168.4.1\npassword12\n' |
+  SESAME_OTA_CONFIG_PATH="$config_path" \
+  SESAME_OTA_RESOLVER="$fake_resolver" \
+  FAKE_RESOLVER_LOG="$resolver_log" \
+  ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
+  "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1
+assert_arg_pair upload --port 192.168.4.1
+test ! -e "$resolver_log"
+! grep -F password12 "$output"
+
+rm -f "$fake_log" "$resolver_log"
+printf 'fe80::1\npassword12\n' |
+  SESAME_OTA_CONFIG_PATH="$config_path" \
+  SESAME_OTA_RESOLVER="$fake_resolver" \
+  FAKE_RESOLVER_LOG="$resolver_log" \
+  ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
+  "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1
+assert_arg_pair upload --port fe80::1
+test ! -e "$resolver_log"
+! grep -F password12 "$output"
+
 rm -f "$fake_log"
 if printf '\npassword12\n' |
    SESAME_OTA_CONFIG_PATH="$config_path" \
+   SESAME_OTA_RESOLVER="$fake_resolver" \
+   FAKE_RESOLVER_LOG="$resolver_log" \
    ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
    FAKE_IMAGE_SIZE=1310721 \
    "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1; then
@@ -167,6 +250,8 @@ grep -Fx 'CALL:compile' "$fake_log"
 rm -f "$fake_log"
 printf '\npassword12\n' |
   SESAME_OTA_CONFIG_PATH="$config_path" \
+  SESAME_OTA_RESOLVER="$fake_resolver" \
+  FAKE_RESOLVER_LOG="$resolver_log" \
   ARDUINO_CLI="$fake_cli" FAKE_ARDUINO_LOG="$fake_log" \
   FAKE_IMAGE_SIZE=1310720 \
   "$repo_root/scripts/ota-upload.sh" >"$output" 2>&1

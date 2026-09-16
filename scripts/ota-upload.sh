@@ -24,6 +24,34 @@ fail() {
   exit 1
 }
 
+is_ipv4_literal() {
+  printf '%s\n' "$1" | awk -F. '
+    BEGIN { valid = 1 }
+    NF != 4 { valid = 0 }
+    {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) valid = 0
+      }
+    }
+    END { if (NR != 1 || !valid) exit 1 }
+  '
+}
+
+resolve_ipv4() {
+  local hostname=$1
+  if test -n "${SESAME_OTA_RESOLVER:-}"; then
+    "$SESAME_OTA_RESOLVER" "$hostname"
+  elif command -v dscacheutil >/dev/null 2>&1; then
+    dscacheutil -q host -a name "$hostname" | awk '
+      $1 == "ip_address:" && $2 !~ /:/ { print $2; exit }
+    '
+  elif command -v getent >/dev/null 2>&1; then
+    getent ahostsv4 "$hostname" | awk 'NR == 1 { print $1; exit }'
+  else
+    return 1
+  fi
+}
+
 test -f "$config_path" ||
   fail "Local OTA configuration not found: $config_path"
 
@@ -49,8 +77,22 @@ if test -z "$target"; then
   target=$configured_hostname
 fi
 case "$target" in
-  *.*|*:*) ;;
-  *) target="${target}.local" ;;
+  *:*) upload_target=$target ;;
+  *)
+    if is_ipv4_literal "$target"; then
+      upload_target=$target
+    else
+      case "$target" in
+        *.*) ;;
+        *) target="${target}.local" ;;
+      esac
+      upload_target=$(resolve_ipv4 "$target") ||
+        fail "Could not resolve OTA target to an IPv4 address: $target"
+      is_ipv4_literal "$upload_target" ||
+        fail "OTA target did not resolve to one valid IPv4 address: $target"
+      printf 'Resolved %s to %s for Arduino CLI.\n' "$target" "$upload_target"
+    fi
+    ;;
 esac
 
 printf 'OTA password: '
@@ -76,7 +118,7 @@ test "$firmware_size" -le 1310720 ||
 
 "$ARDUINO_CLI" upload \
   --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
-  --port "$target" \
+  --port "$upload_target" \
   --protocol network \
   --input-file "$firmware_bin" \
   --upload-property upload.port.properties.port=3232 \
