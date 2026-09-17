@@ -4,10 +4,13 @@ A swarm-capable, AI-driven adaptation of the open-source
 [Sesame robot](https://github.com/dorianborian/sesame-robot) — an ESP32
 quadruped with eight servos and an expressive OLED face.
 
-**Status:** wiring specification complete. No hardware built yet.
+**Status:** Stage 1 wiring and all eight servo identities are verified;
+production animation and loaded floor acceptance remain pending.
 
-The [netlist](docs/wiring/netlist.md) is the source of truth; start from the
-[wiring guide](docs/wiring/README.md) to build the harness.
+The [netlist](docs/wiring/netlist.md) is the source of truth. Start with the
+[wiring guide](docs/wiring/README.md) for the harness or the
+[firmware installation guide](docs/firmware-installation.md) for a new or
+replacement ESP32-S3.
 
 ## What's different from upstream
 
@@ -45,6 +48,7 @@ Plus at least one reserved output (PCA9685 ch8) for a future actuator.
 | [`AGENTS.md`](AGENTS.md) | Instructions for AI agents working in this repo |
 | [`docs/superpowers/specs/`](docs/superpowers/specs/) | Design specs and reasoning |
 | [`docs/wiring/`](docs/wiring/README.md) | The wiring guide, netlist, pin map, power design |
+| [`docs/firmware-installation.md`](docs/firmware-installation.md) | Install the latest build on a new or replacement ESP32-S3 |
 | [`docs/upstream/`](docs/upstream/divergence.md) | What we changed vs upstream, and why |
 | [`hardware/bom.md`](hardware/bom.md) | BOM delta vs upstream |
 | [`firmware/sesame-s3-pca9685/README.md`](firmware/sesame-s3-pca9685/README.md#wi-fi-firmware-updates) | Firmware build notes, and the **Wi-Fi firmware updates** (OTA) workflow |

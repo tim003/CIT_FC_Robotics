@@ -12,15 +12,67 @@ fake_cli="$tmp/arduino-cli"
 resolver_log="$tmp/resolver.log"
 fake_resolver="$tmp/resolve-ota-target"
 
-printf 'sesame-one\npassword12\npassword12\n' |
+valid_config_input='sesame-one
+Sesame_One
+ap-password12
+ap-password12
+ota-secret34
+ota-secret34
+'
+printf '%s' "$valid_config_input" |
   SESAME_OTA_CONFIG_PATH="$config_path" \
   "$repo_root/scripts/configure-ota.sh"
 
 grep -Fx '#define SESAME_DEVICE_HOSTNAME "sesame-one"' "$config_path"
+grep -Fx '#define SESAME_AP_SSID "Sesame_One"' "$config_path"
+grep -Fx '#define SESAME_AP_PASSWORD "ap-password12"' "$config_path"
 grep -Eq '^#define SESAME_OTA_PASSWORD_HASH "[0-9a-f]{64}"$' "$config_path"
-! grep -F 'password12' "$config_path"
+! grep -F 'ota-secret34' "$config_path"
 test "$(stat -c '%a' "$config_path" 2>/dev/null ||
         stat -f '%Lp' "$config_path")" = 600
+
+escaped_config_path="$tmp/escaped-ota-local-config.h"
+printf '%s\n' \
+  'sesame-escaped' 'Sesame "One"' \
+  'ap\"password12' 'ap\"password12' \
+  'ota-secret34' 'ota-secret34' |
+  SESAME_OTA_CONFIG_PATH="$escaped_config_path" \
+  "$repo_root/scripts/configure-ota.sh" >"$output" 2>&1
+grep -Fx '#define SESAME_AP_SSID "Sesame \"One\""' "$escaped_config_path"
+grep -Fx '#define SESAME_AP_PASSWORD "ap\\\"password12"' "$escaped_config_path"
+
+grep -Fx '#define SESAME_AP_SSID "Sesame-Controller"' \
+  "$repo_root/firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino"
+grep -Fx '#define AP_SSID SESAME_AP_SSID' \
+  "$repo_root/firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino"
+grep -Fx '#define AP_PASS SESAME_AP_PASSWORD' \
+  "$repo_root/firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino"
+grep -F '#error "Existing local config is missing per-robot AP credentials; rerun scripts/configure-ota.sh."' \
+  "$repo_root/firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino"
+
+guard_dir="$tmp/config-guard"
+mkdir -p "$guard_dir"
+awk '/^#include <WiFi.h>/{exit} {print}' \
+  "$repo_root/firmware/sesame-s3-pca9685/sesame-s3-pca9685.ino" \
+  >"$guard_dir/config-guard.cpp"
+cat >"$guard_dir/ota-local-config.h" <<'EOF'
+#define SESAME_DEVICE_HOSTNAME "legacy-robot"
+#define SESAME_OTA_PASSWORD_HASH "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+EOF
+if c++ -E -x c++ "$guard_dir/config-guard.cpp" >"$output" 2>&1; then
+  echo 'legacy local config unexpectedly passed the firmware preprocessor guard' >&2
+  exit 1
+fi
+grep -F 'Existing local config is missing per-robot AP credentials' "$output"
+cat >"$guard_dir/ota-local-config.h" <<'EOF'
+#define SESAME_DEVICE_HOSTNAME "configured-robot"
+#define SESAME_AP_SSID "Configured_Robot"
+#define SESAME_AP_PASSWORD "configured-pass12"
+#define SESAME_OTA_PASSWORD_HASH "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+EOF
+c++ -E -x c++ "$guard_dir/config-guard.cpp" >"$output"
+rm "$guard_dir/ota-local-config.h"
+c++ -E -x c++ "$guard_dir/config-guard.cpp" >"$output"
 
 git -C "$repo_root" check-ignore -q \
   firmware/sesame-s3-pca9685/ota-local-config.h
@@ -28,7 +80,15 @@ git -C "$repo_root" check-ignore -q \
   firmware/sesame-s3-pca9685/ota-local-config.h.tmp.interrupted
 
 printf '%s\n' sentinel >"$config_path"
-if printf 'Bad.Host\npassword12\npassword12\n' |
+if SESAME_OTA_CONFIG_PATH="$config_path" \
+   "$repo_root/scripts/configure-ota.sh" </dev/null >"$output" 2>&1; then
+  echo 'hostname EOF unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -F 'No hostname entered (input ended); local configuration was not changed.' "$output"
+grep -Fx sentinel "$config_path"
+
+if printf 'Bad.Host\n' |
    SESAME_OTA_CONFIG_PATH="$config_path" \
    "$repo_root/scripts/configure-ota.sh" >"$output" 2>&1; then
   echo 'invalid hostname unexpectedly succeeded' >&2
@@ -36,15 +96,31 @@ if printf 'Bad.Host\npassword12\npassword12\n' |
 fi
 grep -Fx sentinel "$config_path"
 
-if printf 'sesame-one\npassword12\npassword13\n' |
+if printf 'sesame-one\nThis-SSID-name-is-more-than-thirty-two-bytes\n' |
    SESAME_OTA_CONFIG_PATH="$config_path" \
    "$repo_root/scripts/configure-ota.sh" >"$output" 2>&1; then
-  echo 'mismatched passwords unexpectedly succeeded' >&2
+  echo 'oversized AP SSID unexpectedly succeeded' >&2
   exit 1
 fi
 grep -Fx sentinel "$config_path"
 
-printf 'sesame-one\npassword12\npassword12\n' |
+if printf 'sesame-one\nSesame_One\nap-password12\nap-password13\n' |
+   SESAME_OTA_CONFIG_PATH="$config_path" \
+   "$repo_root/scripts/configure-ota.sh" >"$output" 2>&1; then
+  echo 'mismatched AP passwords unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -Fx sentinel "$config_path"
+
+if printf 'sesame-one\nSesame_One\nap-password12\nap-password12\nota-secret34\nota-secret35\n' |
+   SESAME_OTA_CONFIG_PATH="$config_path" \
+   "$repo_root/scripts/configure-ota.sh" >"$output" 2>&1; then
+  echo 'mismatched OTA passwords unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -Fx sentinel "$config_path"
+
+printf '%s' "$valid_config_input" |
   SESAME_OTA_CONFIG_PATH="$config_path" \
   "$repo_root/scripts/configure-ota.sh" >"$output" 2>&1
 

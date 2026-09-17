@@ -1,13 +1,18 @@
-// Per-robot OTA identity/credential header. Detected before every other
-// include so ArduinoOTA is compiled in only when OTA is actually configured:
+// Private per-robot hostname, AP credentials, and OTA verifier. Detected
+// before every other include so ArduinoOTA is compiled in only when configured:
 // a clean checkout keeps the default hostname, links no OTA code, and spends
 // no flash or RAM on it.
 #if __has_include("ota-local-config.h")
 #include "ota-local-config.h"
+#if !defined(SESAME_AP_SSID) || !defined(SESAME_AP_PASSWORD)
+#error "Existing local config is missing per-robot AP credentials; rerun scripts/configure-ota.sh."
+#endif
 #define SESAME_OTA_CONFIGURED 1
 #else
 #define SESAME_OTA_CONFIGURED 0
 #define SESAME_DEVICE_HOSTNAME "sesame-robot"
+#define SESAME_AP_SSID "Sesame-Controller"
+#define SESAME_AP_PASSWORD "12345678"
 #endif
 
 #include <WiFi.h>
@@ -28,8 +33,8 @@
 
 // --- Access Point Configuration ---
 // This is the network the Robot will create
-#define AP_SSID  "Sesame-Controller"
-#define AP_PASS  "12345678" // Must be at least 8 characters
+#define AP_SSID SESAME_AP_SSID
+#define AP_PASS SESAME_AP_PASSWORD
 
 // --- Station Mode Configuration (Optional) ---
 // Set these to connect to your home/office WiFi network

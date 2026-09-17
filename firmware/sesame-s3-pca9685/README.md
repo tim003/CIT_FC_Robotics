@@ -130,6 +130,10 @@ The delta it would show is described in
 
 ## Build
 
+For a complete clean-machine and replacement-board procedure, follow
+[`docs/firmware-installation.md`](../../docs/firmware-installation.md). The
+commands below are the concise reference for an already prepared workstation.
+
 ```sh
 arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
   -u -p /dev/cu.usbmodem* firmware/sesame-s3-pca9685
@@ -159,35 +163,40 @@ larger app slot rather than deleting faces.
 ## Wi-Fi firmware updates
 
 A clean checkout has **no Wi-Fi update support at all**: with no local
-configuration present the sketch is compiled without ArduinoOTA, uses the
-default hostname `sesame-robot`, and cannot be updated over Wi-Fi. The
-currently released firmware does not accept Wi-Fi updates either. Before the
-first Wi-Fi update, the robot must therefore receive one final USB flash with
-OTA configured. From the repository root, run:
+configuration present the sketch is compiled without ArduinoOTA, uses hostname
+`sesame-robot`, and creates the default `Sesame-Controller` AP. Before the first
+Wi-Fi update, each new ESP32 must therefore receive one USB flash with its
+private robot configuration present. From the repository root, run:
 
 ```sh
 ./scripts/configure-ota.sh
 ```
 
-This prompts for the robot's device-wide hostname and OTA password. It does
-**not** change the `Sesame-Controller` AP SSID/password or the saved Wi-Fi
-network credentials. The generated
-`firmware/sesame-s3-pca9685/ota-local-config.h` is gitignored, contains an
-authentication-equivalent password verifier, and is written mode `0600`. Keep a
-secure local backup if recovering the configuration over USB after credential
-loss would be difficult.
+This prompts for the robot's device-wide hostname, AP SSID/password, and OTA
+password. It does not change saved station-mode Wi-Fi credentials. The
+generated `firmware/sesame-s3-pca9685/ota-local-config.h` is gitignored,
+written mode `0600`, and contains the plaintext AP password plus an
+authentication-equivalent OTA password verifier. Keep it private and maintain a
+secure local backup if USB recovery after credential loss would be difficult.
 
 What the script accepts, before you run it:
 
-- **Hostname** — 1–32 characters, lowercase letters, digits, and internal
-  hyphens only; no leading or trailing hyphen. Anything else is rejected and
-  any existing configuration is left untouched.
+- **Hostname** — 1–32 lowercase letters, digits, or internal hyphens; no
+  leading or trailing hyphen.
+- **Robot AP SSID** — 1–32 bytes of printable ASCII.
+- **Robot AP password** — 8–63 bytes of printable ASCII, entered twice without
+  echo.
 - **OTA password** — at least 8 bytes, entered twice without echo (8 bytes is
-  8 characters of ASCII; non-ASCII characters count as more than one byte). A
-  mismatch is rejected and, again, changes nothing on disk.
+  8 characters of ASCII; non-ASCII input is rejected for AP fields).
+- Any rejected value leaves the existing local configuration untouched.
 - **`ota-upload.sh` requires that header.** It refuses to run without it,
   because the local configuration supplies both the default target hostname and
   the verifier the robot authenticates against.
+
+If the header predates per-robot AP configuration and lacks
+`SESAME_AP_SSID`/`SESAME_AP_PASSWORD`, rerun `configure-ota.sh` before flashing.
+The sketch deliberately stops compilation with `#error` until the incomplete
+header is regenerated, rather than silently using the public AP defaults.
 
 With the robot connected over USB, install that configured firmware once:
 
@@ -205,7 +214,8 @@ For every later Wi-Fi update:
 
 1. Raise or securely support the robot; OTA deliberately makes all servos limp.
 2. Power the robot normally and stop any movement.
-3. Connect the computer to `Sesame-Controller` or to the same LAN as the robot.
+3. Connect the computer to the configured robot AP (default:
+   `Sesame-Controller`) or to the same LAN as the robot.
 4. Confirm `http://<current-hostname>.local` opens in a browser.
 5. From the repository root, run `./scripts/ota-upload.sh`.
 6. Enter the current hostname/IP and OTA password when prompted. When given a
@@ -292,8 +302,8 @@ if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
 ```
 
 This runs **before** `WiFi.softAP()`. If the SSD1306 does not answer at `0x3C`,
-the board stops dead and the `Sesame-Controller` network never appears — which
-looks like a Wi-Fi fault but is an I2C fault.
+the board stops dead and the configured robot AP never appears — which looks
+like a Wi-Fi fault but is an I2C fault.
 
 First checkpoint on boot: the OLED should display `Setting up WiFi...`. If it
 does, I2C is fine and the halt is not your problem.
@@ -307,8 +317,8 @@ are strapped to `0x3D` rather than `0x3C`.
 The Super Mini's antenna is printed on one end of its own PCB. Seated
 centrally in a breadboard, that antenna sits over the metal contact strips,
 which detune and absorb it. The board still *hears* nearby networks, but
-nothing can reach it: `Sesame-Controller` reports a successful start and stays
-invisible to every client.
+nothing can reach it: the configured robot AP reports a successful start and
+stays invisible to every client.
 
 **Seat the board with its antenna end overhanging the breadboard.** The full
 account, including the measurements and the PCB keep-out rules, is in

@@ -8,10 +8,10 @@ credentials*
 *.pem
 id_ed25519*
 
-# Per-robot ArduinoOTA identity and authentication-equivalent password hash.
+# Per-robot hostname, AP credentials, and authentication-equivalent OTA hash.
 firmware/sesame-s3-pca9685/ota-local-config.h
 # Interrupted configure-ota.sh writes leave a mode-0600 temp file holding the
-# same authentication-equivalent verifier; it must never be committable either.
+# same private configuration; it must never be committable either.
 firmware/sesame-s3-pca9685/ota-local-config.h.tmp.*
 
 # Agent transients (screenshots, observational memory, parked issues)
